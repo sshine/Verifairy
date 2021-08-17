@@ -1,0 +1,31 @@
+name: verifpal
+version: 0.1.0
+extra-source-files:
+  - README.md
+
+dependencies:
+  - base
+  - containers
+  - optparse-generic
+  - text
+
+default-extensions:
+  - OverloadedStrings
+
+library:
+  exposed-modules:
+    - Types
+  source-dirs: src
+
+tests:
+  test:
+    main: test.hs
+    source-dirs: test
+    dependencies:
+      - jq
+      - tasty
+      - tasty-discover
+      - tasty-hspec
+      - tasty-hedgehog
+      - hedgehog
+      - hspec
