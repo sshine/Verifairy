@@ -1,0 +1,58 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.34.4.
+--
+-- see: https://github.com/sol/hpack
+
+name:           verifpal
+version:        0.1.0
+build-type:     Simple
+extra-source-files:
+    README.md
+
+library
+  exposed-modules:
+      VerifPal.Types
+      VerifPal.Parser
+  other-modules:
+      Paths_verifpal
+  hs-source-dirs:
+      src
+  default-extensions:
+      OverloadedStrings
+      RecordWildCards
+  build-depends:
+      base
+    , containers
+    , megaparsec
+    , optparse-generic
+    , text
+  default-language: Haskell2010
+
+test-suite test
+  type: exitcode-stdio-1.0
+  main-is: test.hs
+  other-modules:
+      ParserTest
+      Paths_verifpal
+  hs-source-dirs:
+      test
+  default-extensions:
+      OverloadedStrings
+      RecordWildCards
+  build-depends:
+      base
+    , containers
+    , file-embed
+    , hedgehog
+    , hspec
+    , hspec-megaparsec
+    , megaparsec
+    , optparse-generic
+    , tasty
+    , tasty-discover
+    , tasty-hedgehog
+    , tasty-hspec
+    , text
+    , verifpal
+  default-language: Haskell2010
