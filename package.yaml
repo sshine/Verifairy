@@ -6,6 +6,7 @@ extra-source-files:
 dependencies:
   - base
   - containers
+  - megaparsec
   - optparse-generic
   - text
 
@@ -14,7 +15,8 @@ default-extensions:
 
 library:
   exposed-modules:
-    - Types
+    - VerifPal.Types
+    - VerifPal.Parser
   source-dirs: src
 
 tests:
@@ -22,10 +24,12 @@ tests:
     main: test.hs
     source-dirs: test
     dependencies:
-      - jq
+      - verifpal
       - tasty
       - tasty-discover
       - tasty-hspec
       - tasty-hedgehog
       - hedgehog
       - hspec
+      - hspec-megaparsec
+      - file-embed

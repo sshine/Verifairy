@@ -1,0 +1,6 @@
+principal Bob[
+  knows public c0, c1
+  knows private m2
+  generates b
+  gb = G^b
+]

@@ -1,17 +1,21 @@
 
 -- Based on: https://verifpal.com/res/pdf/manual.pdf
 
-module Types where
+module VerifPal.Types where
 
 import Data.Set (Set)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Text (Text)
 
 data Principal = Principal
   { principalKnows :: Map Constant Knowledge
   }
   deriving (Eq, Ord, Show)
+
+emptyPrincipal :: Principal
+emptyPrincipal = Principal Map.empty
 
 -- Fundamental types: Constants, primitives, equations
 
