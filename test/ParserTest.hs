@@ -63,5 +63,5 @@ spec_parsePrincipal =
           , (Constant "c1", Public)
           , (Constant "m2", Private)
           , (Constant "a", Generates)
-          , (Constant "gb", Assignment (G (Const "b")))
+          , (Constant "gb", Assignment (G (mkConst "b")))
           ]

@@ -34,7 +34,10 @@ statements :: Parser (Map Constant Knowledge)
 statements = Map.fromList . concat <$> many knowledge
 
 knowledge :: Parser [(Constant, Knowledge)]
-knowledge = choice [ knows, generates ] <* lexeme0 eol
+knowledge = do
+  line <- choice [ knows, generates, assignment ]
+  lexeme0 eol
+  pure line
   where
     knows = do
       symbol1 "knows"
@@ -48,6 +51,29 @@ knowledge = choice [ knows, generates ] <* lexeme0 eol
       cs <- constant `sepBy1` comma
       pure [ (c, Generates) | c <- cs ]
 
+    assignment :: Parser [(Constant, Knowledge)]
+    assignment = do
+      c <- constant
+      symbol0 "="
+      e <- expr
+      pure [(c, Assignment e)]
+
+expr :: Parser Expr
+expr = choice [ g, hat, const' ]
+  where
+    g, hat, const' :: Parser Expr
+    g = do
+      symbol0 "G^"
+      G <$> expr
+
+    hat = do
+      c <- constant
+      symbol0 "^"
+      e <- expr
+      pure (c :^: e)
+
+    const' = Const <$> constant
+
 publicPrivate :: Parser Knowledge
 publicPrivate = choice
   [ symbol1 "public" >> pure Public
@@ -55,10 +81,17 @@ publicPrivate = choice
   ]
 
 name :: Parser Text
-name = lexeme0 $ takeWhile1P (Just "principal name") isIdentifierChar
+name = identifier "principal name"
 
 constant :: Parser Constant
-constant = Constant <$> takeWhile1P Nothing isIdentifierChar
+constant = lexeme0 $ Constant <$> identifier "constant"
+
+identifier :: String -> Parser Text
+identifier desc = lexeme0 $ do
+  ident <- takeWhile1P (Just desc) isIdentifierChar
+  if ident `elem` reservedKeywords
+    then error ("keyword '" <> Text.unpack ident <> "' not allowed as " <> desc) -- FIXME: Use Megaparsec error handling
+    else return ident
 
 comma :: Parser ()
 comma = symbol0 ","
@@ -77,9 +110,54 @@ lexeme0 = (<* space0)
 lexeme1 = (<* space1)
 
 space, space0, space1 :: Parser ()
-space = void $ takeWhileP (Just "whitespace") isSpace
-space0 = void $ takeWhileP (Just "whitespace") isHorizontalSpace
-space1 = void $ takeWhile1P (Just "whitespace") isHorizontalSpace
+space = void $ takeWhileP (Just "whitespace 1") isSpace
+space0 = void $ takeWhileP (Just "whitespace 2") isHorizontalSpace
+space1 = void $ takeWhile1P (Just "whitespace 3") isHorizontalSpace
 
 isHorizontalSpace :: Char -> Bool
 isHorizontalSpace c = isSpace c && c /= '\r' && c /= '\n'
+
+isIdentifierChar :: Char -> Bool
+isIdentifierChar c = isLetter c || isNumber c
+
+reservedKeywords :: [Text]
+reservedKeywords =
+  [ "active"
+  , "aead_dec"
+  , "aead_enc"
+  , "assert"
+  , "attacker"
+  , "authentication"
+  , "concat"
+  , "confidentiality"
+  , "dec"
+  , "enc"
+  , "equivalence"
+  , "freshness"
+  , "generates"
+  , "hash"
+  , "hkdf"
+  , "knows"
+  , "leaks"
+  , "mac"
+  , "passive"
+  , "password"
+  , "phase"
+  , "pke_dec"
+  , "pke_enc"
+  , "precondition"
+  , "primitive"
+  , "principal"
+  , "private"
+  , "public"
+  , "pw_hash"
+  , "ringsign"
+  , "ringsignverif"
+  , "shamir_join"
+  , "shamir_split"
+  , "sign"
+  , "signverif"
+  , "split"
+  , "unlinkability"
+  , "unnamed"
+  ]

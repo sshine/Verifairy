@@ -77,7 +77,10 @@ data Expr
   | SHAMIR_JOIN  Expr Expr Expr    -- SHAMIR_JOIN(sa, sb): k
 
     -- Equations
-  | G Expr           -- G^...
-  | (:^:) Expr Expr  -- a^b
-  | Const Text       -- a
+  | G Expr               -- G^...
+  | (:^:) Constant Expr  -- a^b
+  | Const Constant       -- a
   deriving (Eq, Ord, Show)
+
+mkConst :: Text -> Expr
+mkConst = Const . Constant
