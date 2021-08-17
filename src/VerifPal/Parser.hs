@@ -59,20 +59,20 @@ knowledge = do
       pure [(c, Assignment e)]
 
 expr :: Parser Expr
-expr = choice [ g, hat, const' ]
+expr = choice [ g, constHat ]
   where
-    g, hat, const' :: Parser Expr
+    g, constHat :: Parser Expr
     g = do
       symbol0 "G^"
       G <$> expr
 
-    hat = do
+    constHat = do
       c <- constant
-      symbol0 "^"
-      e <- expr
-      pure (c :^: e)
-
-    const' = Const <$> constant
+      maybeHat <- option Const $ do
+        symbol0 "^"
+        e <- expr
+        pure (:^: e)
+      pure (maybeHat c)
 
 publicPrivate :: Parser Knowledge
 publicPrivate = choice
