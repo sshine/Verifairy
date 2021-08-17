@@ -23,7 +23,7 @@ emptyPrincipal = Principal Map.empty
 --  * Immutable, global namespace, can't be assigned to one another.
 --  * Constants can only be assigned to primitives or equations.
 --
-data Constant = Constant
+newtype Constant = Constant
   { constantName :: Text
   } deriving (Eq, Ord, Show)
 
@@ -76,6 +76,7 @@ data Expr
   | SHAMIR_JOIN  Expr Expr Expr    -- SHAMIR_JOIN(sa, sb): k
 
     -- Equations
-  | G Expr         -- G^...
-  | Hat Expr Expr  -- a^b
+  | G Expr           -- G^...
+  | (:^:) Expr Expr  -- a^b
+  | Const Text       -- a
   deriving (Eq, Ord, Show)
