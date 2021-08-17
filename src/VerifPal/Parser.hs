@@ -1,8 +1,10 @@
 
+-- https://source.symbolic.software/verifpal/verifpal/-/blob/master/cmd/vplogic/libpeg.go
+
 module VerifPal.Parser where
 
 import Control.Monad (void)
-import Data.Char (isLetter, isSpace)
+import Data.Char (isLetter, isSpace, isNumber)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Text (Text)
@@ -32,7 +34,7 @@ statements :: Parser (Map Constant Knowledge)
 statements = Map.fromList . concat <$> many knowledge
 
 knowledge :: Parser [(Constant, Knowledge)]
-knowledge = choice [ knows, generates ] <* eol
+knowledge = choice [ knows, generates ] <* lexeme0 eol
   where
     knows = do
       symbol1 "knows"
@@ -53,19 +55,20 @@ publicPrivate = choice
   ]
 
 name :: Parser Text
-name = lexeme0 $ takeWhile1P (Just "principal name") isLetter
+name = lexeme0 $ takeWhile1P (Just "principal name") isIdentifierChar
 
 constant :: Parser Constant
-constant = Constant <$> takeWhile1P Nothing isLetter
+constant = Constant <$> takeWhile1P Nothing isIdentifierChar
 
 comma :: Parser ()
-comma = symbol1 ", "
+comma = symbol0 ","
 
 brackets :: Parser a -> Parser a
 brackets = between (symbol "[") (symbol "]")
 
-symbol, symbol1 :: Text -> Parser ()
+symbol, symbol0, symbol1 :: Text -> Parser ()
 symbol = lexeme . void . chunk
+symbol0 = lexeme0 . void . chunk
 symbol1 = lexeme1 . void . chunk
 
 lexeme, lexeme0, lexeme1 :: Parser a -> Parser a

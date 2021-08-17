@@ -27,8 +27,8 @@ import VerifPal.Parser (parsePrincipal)
 --shouldParseAs s e =
 --  it (Text.unpack s) $ parseExpr s `shouldParse` e
 
-spec_FuncDef :: Spec
-spec_FuncDef =
+spec_parsePrincipal :: Spec
+spec_parsePrincipal =
   describe "parsePrincipal" $ do
     it "parses data/alice1.vp" $
       parsePrincipal alice1 `shouldParse` alice1ast
