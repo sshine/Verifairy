@@ -14,6 +14,7 @@ import Data.Text.Read (hexadecimal)
 import Data.Void
 
 import Hedgehog
+import Test.Hspec
 import Test.Hspec.Megaparsec
 import Test.Tasty.Hspec
 --import Text.Megaparsec (parse, ParseErrorBundle)
