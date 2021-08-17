@@ -10,12 +10,13 @@ import qualified Data.Map as Map
 import Data.Text (Text)
 
 data Principal = Principal
-  { principalKnows :: Map Constant Knowledge
+  { principalName :: Text
+  , principalKnows :: Map Constant Knowledge
   }
   deriving (Eq, Ord, Show)
 
 emptyPrincipal :: Principal
-emptyPrincipal = Principal Map.empty
+emptyPrincipal = Principal "empty" Map.empty
 
 -- Fundamental types: Constants, primitives, equations
 

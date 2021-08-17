@@ -41,21 +41,27 @@ spec_FuncDef =
     alice1 = $(embedStringFile "data/alice1.vp")
 
     alice1ast :: Principal
-    alice1ast = Principal $ Map.fromList
-      [ (Constant "c0", Public)
-      , (Constant "c1", Public)
-      , (Constant "m1", Private)
-      , (Constant "a", Generates)
-      ]
+    alice1ast = Principal{..}
+      where
+        principalName = "Alice"
+        principalKnows = Map.fromList
+          [ (Constant "c0", Public)
+          , (Constant "c1", Public)
+          , (Constant "m1", Private)
+          , (Constant "a", Generates)
+          ]
 
     bob1 :: Text
     bob1 = $(embedStringFile "data/bob1.vp")
 
     bob1ast :: Principal
-    bob1ast = Principal $ Map.fromList
-      [ (Constant "c0", Public)
-      , (Constant "c1", Public)
-      , (Constant "m2", Private)
-      , (Constant "a", Generates)
-      , (Constant "gb", Assignment (G (Const "b")))
-      ]
+    bob1ast = Principal{..}
+      where
+        principalName = "Bob"
+        principalKnows = Map.fromList
+          [ (Constant "c0", Public)
+          , (Constant "c1", Public)
+          , (Constant "m2", Private)
+          , (Constant "a", Generates)
+          , (Constant "gb", Assignment (G (Const "b")))
+          ]
