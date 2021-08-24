@@ -98,35 +98,35 @@ data Expr
  
 data Primitive
     -- Core primitives
-  = ASSERT Expr Expr       -- ASSERT(a, b): unused
-  | CONCAT Expr Expr Expr  -- CONCAT(a, b): c
-  | SPLIT Expr Expr Expr   -- SPLIT(...CONCAT(a, b)...): a, b
+  = ASSERT Expr Expr  -- ASSERT(a, b): unused
+  | CONCAT [Expr]     -- CONCAT(a, b): c
+  | SPLIT Expr        -- SPLIT(...CONCAT(a, b)...): a, b
 
     -- Hashing primitives
-  | HASH (NonEmpty Expr) Expr      -- HASH(a, ..., e): x
-  | MAC Expr Expr Expr                -- MAC(key, message): hash
-  | HKDF Expr Expr Expr (NonEmpty Expr)  -- HKDF(salt, ikm, info): a, ..., e
-  | PW_HASH (NonEmpty Expr) Expr   -- PW_HASH(a, ..., e): x
+  | HASH [Expr]      -- HASH(a, ..., e): x
+  | MAC Expr Expr                -- MAC(key, message): hash
+  | HKDF Expr Expr Expr  -- HKDF(salt, ikm, info): a, ..., e
+  | PW_HASH [Expr]   -- PW_HASH(a, ..., e): x
 
     -- Encryption primitives
-  | ENC Expr Expr Expr       -- ENC(key, plaintext): ciphertext
-  | DEC Expr Expr Expr       -- DEC(key, ENC(key, plaintext)): plaintext
+  | ENC Expr Expr  -- ENC(key, plaintext): ciphertext
+  | DEC Expr Expr  -- DEC(key, ENC(key, plaintext)): plaintext
   | AEAD_ENC Expr Expr Expr  -- AEAD_ENC(key, plaintext, ad): ciphertext
   | AEAD_DEC Expr Expr Expr  -- AEAD_DEC(key, AEAD_ENC(key, plaintext, ad), ad): plaintext
-  | PKE_ENC Expr Expr Expr   -- PKE_ENC(G^key, plaintext): ciphertext
-  | PKE_DEC Expr Expr Expr   -- PKE_DEC(key, PKE_ENC(G^key, plaintext)): plaintext
+  | PKE_ENC Expr Expr   -- PKE_ENC(G^key, plaintext): ciphertext
+  | PKE_DEC Expr Expr   -- PKE_DEC(key, PKE_ENC(G^key, plaintext)): plaintext
 
     -- Signature primitives
-  | SIGN Expr Expr Expr          -- SIGN(key, message): signature
-  | SIGNVERIF Expr Expr Expr Expr   -- SIGNVERIF(G^key, message, SIGN(key, message)): message
-  | RINGSIGN Expr Expr Expr Expr Expr  -- RINGSIGN(key_a, G^key_b, G^key_c, message): signature
-  | RINGSIGNVERIF Expr Expr Expr Expr Expr Expr  -- RINGSIGNVERIF(G^a, G^b, G^c, m, RINGSIGN(a, G^b, G^c, m)): m
-  | BLIND Expr Expr Expr         -- BLIND(k, m): m
-  | UNBLIND Expr Expr Expr Expr     -- UNBLIND(k, m, SIGN(a, BLIND(k, m))): SIGN(a, m)
+  | SIGN Expr Expr          -- SIGN(key, message): signature
+  | SIGNVERIF Expr Expr Expr   -- SIGNVERIF(G^key, message, SIGN(key, message)): message
+  | RINGSIGN Expr Expr Expr Expr  -- RINGSIGN(key_a, G^key_b, G^key_c, message): signature
+  | RINGSIGNVERIF Expr Expr Expr Expr Expr  -- RINGSIGNVERIF(G^a, G^b, G^c, m, RINGSIGN(a, G^b, G^c, m)): m
+  | BLIND Expr Expr  -- BLIND(k, m): m
+  | UNBLIND Expr Expr Expr  -- UNBLIND(k, m, SIGN(a, BLIND(k, m))): SIGN(a, m)
 
     -- Secret sharing primitives
-  | SHAMIR_SPLIT Expr Expr Expr Expr  -- SHAMIR_SPLIT(k): s1, s2, s3
-  | SHAMIR_JOIN  Expr Expr Expr    -- SHAMIR_JOIN(sa, sb): k
+  | SHAMIR_SPLIT Expr  -- SHAMIR_SPLIT(k): s1, s2, s3
+  | SHAMIR_JOIN Expr Expr Expr -- SHAMIR_JOIN(sa, sb): k
   deriving (Eq, Ord, Show)
 
 -- Checked Primitive:  if you add a question mark (?) after one of these

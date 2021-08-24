@@ -159,9 +159,34 @@ expr = choice [ g, primitive, constHat ]
 
     primitive = choice
       [ prim2 "ASSERT" ASSERT
+      , primN "CONCAT" CONCAT
+      , prim1 "SPLIT" SPLIT
+      , primN "HASH" HASH
+      , prim2 "MAC" MAC
+      , prim3 "HKDF" HKDF
+      , primN "PW_HASH" PW_HASH
+      , prim2 "ENC" ENC
+      , prim2 "DEC" DEC
       , prim3 "AEAD_ENC" AEAD_ENC
       , prim3 "AEAD_DEC" AEAD_DEC
+      , prim2 "PKE_ENC" PKE_ENC
+      , prim2 "PKE_DEC" PKE_DEC
+      , prim2 "SIGN" SIGN
+      , prim3 "SIGNVERIF" SIGNVERIF
+      , prim4 "RINGSIGN" RINGSIGN
+      , prim5 "RIGNSIGNVERIF" RINGSIGNVERIF
+      , prim2 "BLIND" BLIND
+      , prim3 "UNBLIND" UNBLIND
+      , prim1 "SHAMIR_SPLIT" SHAMIR_SPLIT
+      , prim3 "SHAMIR_JOIN" SHAMIR_JOIN
       ]
+
+    prim1 :: Text -> (Expr -> Primitive) -> Parser Expr
+    prim1 primName primOp = do
+      symbol primName
+      prim <- parens (primOp <$> expr)
+      question <- option HasntQuestionMark (symbol "?" $> HasQuestionMark)
+      pure (EPrimitive prim question)
 
     prim2 :: Text -> (Expr -> Expr -> Primitive) -> Parser Expr
     prim2 primName primOp = do
@@ -170,10 +195,31 @@ expr = choice [ g, primitive, constHat ]
       question <- option HasntQuestionMark (symbol "?" $> HasQuestionMark)
       pure (EPrimitive prim question)
 
-    prim3 :: Text -> (Expr -> Expr ->  Expr -> Primitive) -> Parser Expr
+    prim3 :: Text -> (Expr -> Expr -> Expr -> Primitive) -> Parser Expr
     prim3 primName primOp = do
       symbol primName
       prim <- parens (primOp <$> (expr <* comma) <*> (expr <* comma) <*> expr)
+      question <- option HasntQuestionMark (symbol "?" $> HasQuestionMark)
+      pure (EPrimitive prim question)
+
+    prim4 :: Text -> (Expr -> Expr -> Expr -> Expr -> Primitive) -> Parser Expr
+    prim4 primName primOp = do
+      symbol primName
+      prim <- parens (primOp <$> (expr <* comma) <*> (expr <* comma) <*> (expr <* comma) <*> expr)
+      question <- option HasntQuestionMark (symbol "?" $> HasQuestionMark)
+      pure (EPrimitive prim question)
+
+    prim5 :: Text -> (Expr -> Expr -> Expr -> Expr -> Expr -> Primitive) -> Parser Expr
+    prim5 primName primOp = do
+      symbol primName
+      prim <- parens (primOp <$> (expr <* comma) <*> (expr <* comma) <*> (expr <* comma) <*> (expr <* comma) <*> expr)
+      question <- option HasntQuestionMark (symbol "?" $> HasQuestionMark)
+      pure (EPrimitive prim question)
+
+    primN :: Text -> ([Expr] -> Primitive) -> Parser Expr
+    primN primName primOp = do
+      symbol primName
+      prim <- parens (primOp <$> (expr `sepBy` comma))
       question <- option HasntQuestionMark (symbol "?" $> HasQuestionMark)
       pure (EPrimitive prim question)
 
