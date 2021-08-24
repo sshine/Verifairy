@@ -88,9 +88,17 @@ data Knowledge
 --  * Rebuild: Given SHAMIR_JOIN(a, b) where a, b, c = SHAMIR_SPLIT(x),
 --             rewrite SHAMIR_JOIN(a, b) to x.
 
-data Expr
+data Expr 
+    -- Equations
+  = G Expr                                -- G^...
+  | (:^:) Constant Expr                   -- a^b
+  | EConstant Constant                    -- a
+  | EPrimitive Primitive CheckedPrimitive -- ...?
+  deriving (Eq, Ord, Show)
+ 
+data Primitive
     -- Core primitives
-  = ASSERT Expr Expr    -- ASSERT(a, b): unused
+  = ASSERT Expr Expr       -- ASSERT(a, b): unused
   | CONCAT Expr Expr Expr  -- CONCAT(a, b): c
   | SPLIT Expr Expr Expr   -- SPLIT(...CONCAT(a, b)...): a, b
 
@@ -119,12 +127,20 @@ data Expr
     -- Secret sharing primitives
   | SHAMIR_SPLIT Expr Expr Expr Expr  -- SHAMIR_SPLIT(k): s1, s2, s3
   | SHAMIR_JOIN  Expr Expr Expr    -- SHAMIR_JOIN(sa, sb): k
-
-    -- Equations
-  | G Expr               -- G^...
-  | (:^:) Constant Expr  -- a^b
-  | Const Constant       -- a
   deriving (Eq, Ord, Show)
 
+-- Checked Primitive:  if you add a question mark (?) after one of these
+-- primitives, then model execution will abort should AEAD_DEC fail
+-- authenticated decryption, or should ASSERT fail to find its two provided
+-- inputs equal, or should SIGNVERIF fail to verify the signature against the
+-- provided message and public key.
+--
+-- TODO: Propagate this to the assigned
+data CheckedPrimitive
+  = HasQuestionMark
+  | HasntQuestionMark
+  deriving (Eq, Ord, Show)
+
+
 mkConst :: Text -> Expr
-mkConst = Const . Constant
+mkConst = EConstant . Constant

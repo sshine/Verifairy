@@ -5,12 +5,13 @@ module VerifPal.Parser where
 
 import Control.Monad (void)
 import Data.Char (isLetter, isSpace, isNumber)
+import Data.Functor (($>))
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Text.Megaparsec
-import Text.Megaparsec.Char (eol)
+import Text.Megaparsec.Char (eol, digitChar)
 import Text.Megaparsec.Char.Lexer (decimal)
 import Data.Void (Void)
 
@@ -24,12 +25,14 @@ parse' p = parse p ""
 parsePrincipal :: Text -> Either (ParseErrorBundle Text Void) Principal
 parsePrincipal = parse' principal
 
+parseModelPart :: Text -> Either (ParseErrorBundle Text Void) ModelPart
+parseModelPart = parse' modelPart
+
 parseModel :: Text -> Either (ParseErrorBundle Text Void) Model
-parseModel = parse' model
+parseModel = parse' (space *> model)
 
 model :: Parser Model
 model = do
-  space
   modelAttacker <- attacker
   modelParts <- many modelPart
   modelQueries <- queries
@@ -37,7 +40,7 @@ model = do
 
 attacker :: Parser Attacker
 attacker = do
-  symbol0 "attacker"
+  symbol "attacker"
   brackets $ choice [ active, passive ]
   where
     active = symbol "active" >> pure Active
@@ -46,8 +49,8 @@ attacker = do
 modelPart :: Parser ModelPart
 modelPart = choice
   [ ModelPrincipal <$> principal
-  , ModelMessage <$> message
   , ModelPhase <$> phase
+  , ModelMessage <$> message
   ]
 
 principal :: Parser Principal
@@ -61,21 +64,20 @@ principal = do
 message :: Parser Message
 message = do
   messageSender <- name
-  symbol0 "->"
+  symbol "->"
   messageReceiver <- name
-  symbol0 ":"
+  symbol ":"
   messageConstants <- constant `sepBy1` comma
   pure Message{..}
 
 phase :: Parser Phase
 phase = do
-  symbol0 "phase"
-  phaseNumber <- brackets decimal
-  pure Phase{..}
+  symbol "phase"
+  Phase . read <$> brackets (some digitChar)
 
 queries :: Parser [Query]
-queries = do
-  symbol0 "queries"
+queries = option [] $ do
+  symbol "queries"
   brackets (many query)
 
 query :: Parser Query
@@ -91,39 +93,36 @@ query = do
   pure Query{..}
   where
     confidentialityQuery = do
-      symbol0 "confidentiality?" 
+      symbol "confidentiality?" 
       ConfidentialityQuery <$> constant
 
     -- FIXME: I'm using 'message' here, but the BNF doesn't actually allow the full flexibility of Message here.
     authenticationQuery = do
-      symbol0 "authentication?"
+      symbol "authentication?"
       AuthenticationQuery <$> message
 
     freshnessQuery = do
-      symbol0 "freshness?"
+      symbol "freshness?"
       FreshnessQuery <$> constant
 
     unlinkabilityQuery = do
-      symbol0 "unlinkability?"
+      symbol "unlinkability?"
       UnlinkabilityQuery <$> (constant `sepBy1` comma)
 
     equivalenceQuery = do
-      symbol0 "equivalence?"
+      symbol "equivalence?"
       EquivalenceQuery <$> (constant `sepBy1` comma)
 
     queryOption :: Parser QueryOption
     queryOption = do
-      symbol0 "precondition"
+      symbol "precondition"
       QueryOption <$> brackets message
 
 statements :: Parser (Map Constant Knowledge)
 statements = Map.fromList . concat <$> many knowledge
 
 knowledge :: Parser [(Constant, Knowledge)]
-knowledge = do
-  line <- choice [ knows, generates, leaks, assignment ]
-  lexeme0 eol
-  pure line
+knowledge = choice [ knows, generates, leaks, assignment ]
   where
     knows = do
       symbol1 "knows"
@@ -146,22 +145,42 @@ knowledge = do
     assignment :: Parser [(Constant, Knowledge)]
     assignment = do
       c <- constant
-      symbol0 "="
+      symbol "="
       e <- expr
       pure [(c, Assignment e)]
 
 expr :: Parser Expr
-expr = choice [ g, constHat ]
+expr = choice [ g, primitive, constHat ]
   where
-    g, constHat :: Parser Expr
+    g, primitive, constHat :: Parser Expr
     g = do
-      symbol0 "G^"
+      symbol "G^"
       G <$> expr
+
+    primitive = choice
+      [ prim2 "ASSERT" ASSERT
+      , prim3 "AEAD_ENC" AEAD_ENC
+      , prim3 "AEAD_DEC" AEAD_DEC
+      ]
+
+    prim2 :: Text -> (Expr -> Expr -> Primitive) -> Parser Expr
+    prim2 primName primOp = do
+      symbol primName
+      prim <- parens (primOp <$> (expr <* comma) <*> expr)
+      question <- option HasntQuestionMark (symbol "?" $> HasQuestionMark)
+      pure (EPrimitive prim question)
+
+    prim3 :: Text -> (Expr -> Expr ->  Expr -> Primitive) -> Parser Expr
+    prim3 primName primOp = do
+      symbol primName
+      prim <- parens (primOp <$> (expr <* comma) <*> (expr <* comma) <*> expr)
+      question <- option HasntQuestionMark (symbol "?" $> HasQuestionMark)
+      pure (EPrimitive prim question)
 
     constHat = do
       c <- constant
-      maybeHat <- option Const $ do
-        symbol0 "^"
+      maybeHat <- option EConstant $ do
+        symbol "^"
         e <- expr
         pure (:^: e)
       pure (maybeHat c)
@@ -177,41 +196,36 @@ name :: Parser Text
 name = identifier "principal name"
 
 constant :: Parser Constant
-constant = lexeme0 $ Constant <$> identifier "constant"
+constant = Constant <$> identifier "constant"
 
 identifier :: String -> Parser Text
-identifier desc = lexeme0 $ do
+identifier desc = lexeme $ do
   ident <- takeWhile1P (Just desc) isIdentifierChar
   if ident `elem` reservedKeywords
     then error ("keyword '" <> Text.unpack ident <> "' not allowed as " <> desc) -- FIXME: Use Megaparsec error handling
     else return ident
 
 comma :: Parser ()
-comma = symbol0 ","
+comma = symbol ","
 
-brackets :: Parser a -> Parser a
+brackets, parens :: Parser a -> Parser a
 brackets = between (symbol "[") (symbol "]")
+parens = between (symbol "(") (symbol ")")
 
-symbol, symbol0, symbol1 :: Text -> Parser ()
+symbol, symbol1 :: Text -> Parser ()
 symbol = lexeme . void . chunk
-symbol0 = lexeme0 . void . chunk
 symbol1 = lexeme1 . void . chunk
 
-lexeme, lexeme0, lexeme1 :: Parser a -> Parser a
+lexeme, lexeme1 :: Parser a -> Parser a
 lexeme = (<* space)
-lexeme0 = (<* space0)
 lexeme1 = (<* space1)
 
-space, space0, space1 :: Parser ()
+space, space1 :: Parser ()
 space = void $ takeWhileP (Just "any whitespace") isSpace
-space0 = void $ takeWhileP (Just "") isHorizontalSpace
-space1 = void $ takeWhile1P (Just "whitespace 3") isHorizontalSpace
-
-isHorizontalSpace :: Char -> Bool
-isHorizontalSpace c = isSpace c && c /= '\r' && c /= '\n'
+space1 = void $ takeWhile1P (Just "at least one whitespace") isSpace
 
 isIdentifierChar :: Char -> Bool
-isIdentifierChar c = isLetter c || isNumber c
+isIdentifierChar c = isLetter c || isNumber c || c == '_'
 
 reservedKeywords :: [Text]
 reservedKeywords =

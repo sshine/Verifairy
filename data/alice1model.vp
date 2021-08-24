@@ -1,0 +1,6 @@
+attacker[active]
+principal Alice[
+  knows public c0, c1
+  knows private m1
+  generates a
+]

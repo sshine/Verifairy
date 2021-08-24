@@ -16,3 +16,4 @@ principal Alice[
   ss_b = gb^a
   e1_dec = AEAD_DEC(ss_b, e1, gb)?
 ]
+   
