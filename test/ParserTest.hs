@@ -22,7 +22,7 @@ import Test.Tasty.Hspec
 --import Text.Read (readEither)
 
 import VerifPal.Types
-import VerifPal.Parser (parsePrincipal)
+import VerifPal.Parser (parsePrincipal, parseModel)
 
 --shouldParseAs :: Text -> Expr -> Spec
 --shouldParseAs s e =
@@ -36,6 +36,9 @@ spec_parsePrincipal =
 
     it "parses data/bob1.vp" $
       parsePrincipal bob1 `shouldParse` bob1ast
+
+    it "parses data/simple1.vp" $
+      parseModel simple1 `shouldParse` simple1ast
 
   where
     alice1 :: Text
@@ -66,3 +69,10 @@ spec_parsePrincipal =
           , (Constant "b", Generates)
           , (Constant "gb", Assignment (G (mkConst "b")))
           ]
+
+    simple1 :: Text
+    simple1 = $(embedStringFile "data/simple1.vp")
+
+    simple1ast :: Model
+    simple1ast = Model Passive [] []
+

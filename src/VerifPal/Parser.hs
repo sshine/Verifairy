@@ -11,6 +11,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Text.Megaparsec
 import Text.Megaparsec.Char (eol)
+import Text.Megaparsec.Char.Lexer (decimal)
 import Data.Void (Void)
 
 import VerifPal.Types
@@ -23,6 +24,32 @@ parse' p = parse p ""
 parsePrincipal :: Text -> Either (ParseErrorBundle Text Void) Principal
 parsePrincipal = parse' principal
 
+parseModel :: Text -> Either (ParseErrorBundle Text Void) Model
+parseModel = parse' model
+
+model :: Parser Model
+model = do
+  space
+  modelAttacker <- attacker
+  modelParts <- many modelPart
+  modelQueries <- queries
+  pure Model{..}
+
+attacker :: Parser Attacker
+attacker = do
+  symbol0 "attacker"
+  brackets $ choice [ active, passive ]
+  where
+    active = symbol "active" >> pure Active
+    passive = symbol "passive" >> pure Passive
+
+modelPart :: Parser ModelPart
+modelPart = choice
+  [ ModelPrincipal <$> principal
+  , ModelMessage <$> message
+  , ModelPhase <$> phase
+  ]
+
 principal :: Parser Principal
 principal = do
   symbol1 "principal"
@@ -30,18 +57,77 @@ principal = do
   principalKnows <- brackets statements
   pure Principal{..}
 
+-- Bob -> Alice: gb, e1
+message :: Parser Message
+message = do
+  messageSender <- name
+  symbol0 "->"
+  messageReceiver <- name
+  symbol0 ":"
+  messageConstants <- constant `sepBy1` comma
+  pure Message{..}
+
+phase :: Parser Phase
+phase = do
+  symbol0 "phase"
+  phaseNumber <- brackets decimal
+  pure Phase{..}
+
+queries :: Parser [Query]
+queries = do
+  symbol0 "queries"
+  brackets (many query)
+
+query :: Parser Query
+query = do
+  queryKind <- choice
+    [ confidentialityQuery
+    , authenticationQuery
+    , freshnessQuery
+    , unlinkabilityQuery
+    , equivalenceQuery
+    ]
+  queryOptions <- queryOption
+  pure Query{..}
+  where
+    confidentialityQuery = do
+      symbol0 "confidentiality?" 
+      ConfidentialityQuery <$> constant
+
+    -- FIXME: I'm using 'message' here, but the BNF doesn't actually allow the full flexibility of Message here.
+    authenticationQuery = do
+      symbol0 "authentication?"
+      AuthenticationQuery <$> message
+
+    freshnessQuery = do
+      symbol0 "freshness?"
+      FreshnessQuery <$> constant
+
+    unlinkabilityQuery = do
+      symbol0 "unlinkability?"
+      UnlinkabilityQuery <$> (constant `sepBy1` comma)
+
+    equivalenceQuery = do
+      symbol0 "equivalence?"
+      EquivalenceQuery <$> (constant `sepBy1` comma)
+
+    queryOption :: Parser QueryOption
+    queryOption = do
+      symbol0 "precondition"
+      QueryOption <$> brackets message
+
 statements :: Parser (Map Constant Knowledge)
 statements = Map.fromList . concat <$> many knowledge
 
 knowledge :: Parser [(Constant, Knowledge)]
 knowledge = do
-  line <- choice [ knows, generates, assignment ]
+  line <- choice [ knows, generates, leaks, assignment ]
   lexeme0 eol
   pure line
   where
     knows = do
       symbol1 "knows"
-      visibility <- publicPrivate
+      visibility <- publicPrivatePassword
       cs <- constant `sepBy1` comma
       pure [ (c, visibility) | c <- cs ]
 
@@ -50,6 +136,12 @@ knowledge = do
       symbol1 "generates"
       cs <- constant `sepBy1` comma
       pure [ (c, Generates) | c <- cs ]
+
+    leaks :: Parser [(Constant, Knowledge)]
+    leaks = do
+      symbol1 "leaks"
+      cs <- constant `sepBy1` comma
+      pure [ (c, Leaks) | c <- cs ]
 
     assignment :: Parser [(Constant, Knowledge)]
     assignment = do
@@ -74,10 +166,11 @@ expr = choice [ g, constHat ]
         pure (:^: e)
       pure (maybeHat c)
 
-publicPrivate :: Parser Knowledge
-publicPrivate = choice
+publicPrivatePassword :: Parser Knowledge
+publicPrivatePassword = choice
   [ symbol1 "public" >> pure Public
   , symbol1 "private" >> pure Private
+  , symbol1 "password" >> pure Password
   ]
 
 name :: Parser Text
@@ -110,8 +203,8 @@ lexeme0 = (<* space0)
 lexeme1 = (<* space1)
 
 space, space0, space1 :: Parser ()
-space = void $ takeWhileP (Just "whitespace 1") isSpace
-space0 = void $ takeWhileP (Just "whitespace 2") isHorizontalSpace
+space = void $ takeWhileP (Just "any whitespace") isSpace
+space0 = void $ takeWhileP (Just "") isHorizontalSpace
 space1 = void $ takeWhile1P (Just "whitespace 3") isHorizontalSpace
 
 isHorizontalSpace :: Char -> Bool

@@ -9,14 +9,58 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Text (Text)
 
-data Principal = Principal
-  { principalName :: Text
-  , principalKnows :: Map Constant Knowledge
-  }
+data Model = Model
+  { modelAttacker :: Attacker
+  , modelParts :: [ModelPart]
+  , modelQueries :: [Query]
+  } deriving (Eq, Ord, Show)
+
+data Attacker
+  = Active
+  | Passive
   deriving (Eq, Ord, Show)
+
+data ModelPart
+  = ModelPrincipal Principal
+  | ModelMessage Message
+  | ModelPhase Phase
+  deriving (Eq, Ord, Show)
+
+data Principal = Principal
+  { principalName :: PrincipalName
+  , principalKnows :: Map Constant Knowledge
+  } deriving (Eq, Ord, Show)
+
+type PrincipalName = Text
 
 emptyPrincipal :: Principal
 emptyPrincipal = Principal "empty" Map.empty
+
+data Message = Message
+  { messageSender :: PrincipalName
+  , messageReceiver :: PrincipalName
+  , messageConstants :: [Constant]
+  } deriving (Eq, Ord, Show)
+
+newtype Phase = Phase
+  { phaseNumber :: Word
+  } deriving (Eq, Ord, Show)
+
+data Query = Query
+  { queryKind :: QueryKind
+  , queryOptions :: QueryOption
+  } deriving (Eq, Ord, Show)
+
+data QueryKind
+  = ConfidentialityQuery { confidentialityConstant :: Constant }
+  | AuthenticationQuery { authenticationMessage :: Message }
+  | FreshnessQuery { freshnessConstant :: Constant }
+  | UnlinkabilityQuery { unlinkabilityConstants :: [Constant] }
+  | EquivalenceQuery { equivalenceConstants :: [Constant] }
+  deriving (Eq, Ord, Show)
+
+data QueryOption = QueryOption { queryOptionMessage :: Message }
+  deriving (Eq, Ord, Show)
 
 -- Fundamental types: Constants, primitives, equations
 
