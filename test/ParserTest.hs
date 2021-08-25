@@ -54,7 +54,7 @@ spec_parsePrincipal = do
       parseModel simple1 `shouldParse` simple1ast
 
     it "parses data/simple2.vp" $
-      parseModel simple2 `shouldParse` simple1ast
+      parseModel simple2 `shouldParse` simple2ast
 
 alice1 :: Text
 alice1 = $(embedStringFile "data/alice1.vp")
@@ -144,7 +144,7 @@ simple2 :: Text
 simple2 = $(embedStringFile "data/simple2.vp")
 
 simple2ast :: Model
-simple2ast = simple1ast
+simple2ast = Model {modelAttacker = Active, modelParts = [ModelPrincipal (Principal {principalName = "Alice", principalKnows = Map.fromList [(Constant {constantName = "a"},Generates),(Constant {constantName = "ga"},Assignment (G (EConstant (Constant {constantName = "a"}))))]}),ModelMessage (Message {messageSender = "Alice", messageReceiver = "Bob", messageConstants = [Constant {constantName = "ga"}]}),ModelPrincipal (Principal {principalName = "Bob", principalKnows = Map.fromList [(Constant {constantName = "b"},Generates),(Constant {constantName = "e1"},Assignment (EPrimitive (AEAD_ENC (EConstant (Constant {constantName = "ss_a"})) (EConstant (Constant {constantName = "m1"})) (EConstant (Constant {constantName = "gb"}))) HasntQuestionMark)),(Constant {constantName = "gb"},Assignment (G (EConstant (Constant {constantName = "b"})))),(Constant {constantName = "m1"},Private),(Constant {constantName = "ss_a"},Assignment ((:^:) (Constant {constantName = "ga"}) (EConstant (Constant {constantName = "b"}))))]}),ModelMessage (Message {messageSender = "Bob", messageReceiver = "Alice", messageConstants = [Constant {constantName = "gb"},Constant {constantName = "e1"}]}),ModelPrincipal (Principal {principalName = "Alice", principalKnows = Map.fromList [(Constant {constantName = "e1_dec"},Assignment (EPrimitive (AEAD_DEC (EConstant (Constant {constantName = "ss_b"})) (EConstant (Constant {constantName = "e1"})) (EConstant (Constant {constantName = "gb"}))) HasQuestionMark)),(Constant {constantName = "ss_b"},Assignment ((:^:) (Constant {constantName = "gb"}) (EConstant (Constant {constantName = "a"}))))]}),ModelQueries [Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "e1"}}, queryOptions = Nothing},Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "m1"}}, queryOptions = Nothing},Query {queryKind = AuthenticationQuery {authenticationMessage = Message {messageSender = "Bob", messageReceiver = "Alice", messageConstants = [Constant {constantName = "e1"}]}}, queryOptions = Nothing},Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "ss_a"},Constant {constantName = "ss_b"}]}, queryOptions = Nothing}]]}
 
 message1 :: Text
 message1 = $(embedStringFile "data/message1.vp")

@@ -19,6 +19,6 @@ principal Alice[
 queries[
   confidentiality? e1
   confidentiality? m1
-  authentication? Bob→ Alice: e1
+  authentication? Bob -> Alice: e1
   equivalence? ss_a, ss_b
 ]

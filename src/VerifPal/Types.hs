@@ -48,7 +48,7 @@ newtype Phase = Phase
 
 data Query = Query
   { queryKind :: QueryKind
-  , queryOptions :: QueryOption
+  , queryOptions :: Maybe QueryOption
   } deriving (Eq, Ord, Show)
 
 data QueryKind

@@ -89,7 +89,7 @@ query = do
     , unlinkabilityQuery
     , equivalenceQuery
     ]
-  queryOptions <- queryOption
+  queryOptions <- option Nothing (Just <$> queryOption)
   pure Query{..}
   where
     confidentialityQuery = do
