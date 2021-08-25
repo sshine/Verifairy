@@ -12,7 +12,6 @@ import Data.Text (Text)
 data Model = Model
   { modelAttacker :: Attacker
   , modelParts :: [ModelPart]
-  , modelQueries :: [Query]
   } deriving (Eq, Ord, Show)
 
 data Attacker
@@ -24,6 +23,7 @@ data ModelPart
   = ModelPrincipal Principal
   | ModelMessage Message
   | ModelPhase Phase
+  | ModelQueries [Query]
   deriving (Eq, Ord, Show)
 
 data Principal = Principal

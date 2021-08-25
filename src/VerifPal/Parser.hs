@@ -35,7 +35,6 @@ model :: Parser Model
 model = do
   modelAttacker <- attacker
   modelParts <- many modelPart
-  modelQueries <- queries
   pure Model{..}
 
 attacker :: Parser Attacker
@@ -50,6 +49,7 @@ modelPart :: Parser ModelPart
 modelPart = choice
   [ ModelPrincipal <$> principal
   , ModelPhase <$> phase
+  , ModelQueries <$> queries
   , ModelMessage <$> message
   ]
 
@@ -76,7 +76,7 @@ phase = do
   Phase . read <$> brackets (some digitChar)
 
 queries :: Parser [Query]
-queries = option [] $ do
+queries = do
   symbol "queries"
   brackets (many query)
 
@@ -183,7 +183,6 @@ expr = choice [ g, primitive, constHat ]
 
     prim1 :: Text -> (Expr -> Primitive) -> Parser Expr
     prim1 primName primOp = do
-      symbol primName
       prim <- parens (primOp <$> expr)
       question <- option HasntQuestionMark (symbol "?" $> HasQuestionMark)
       pure (EPrimitive prim question)
@@ -244,12 +243,14 @@ name = identifier "principal name"
 constant :: Parser Constant
 constant = Constant <$> identifier "constant"
 
+-- FIXME: "queries[...]" fails because it's being parsed as a Message sender
 identifier :: String -> Parser Text
-identifier desc = lexeme $ do
-  ident <- takeWhile1P (Just desc) isIdentifierChar
-  if ident `elem` reservedKeywords
-    then error ("keyword '" <> Text.unpack ident <> "' not allowed as " <> desc) -- FIXME: Use Megaparsec error handling
-    else return ident
+identifier desc = lexeme (try (ident >>= check))
+  where
+    ident = takeWhile1P (Just desc) isIdentifierChar
+    check s
+      | s `notElem` reservedKeywords = pure s
+      | otherwise = fail ("Cannot use '" <> Text.unpack s <> "' as identifier")
 
 comma :: Parser ()
 comma = symbol ","
