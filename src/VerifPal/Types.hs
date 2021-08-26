@@ -5,8 +5,8 @@ module VerifPal.Types where
 
 import Data.Set (Set)
 import Data.List.NonEmpty (NonEmpty)
-import Data.Map (Map)
-import qualified Data.Map as Map
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 
 data Model = Model
@@ -28,13 +28,10 @@ data ModelPart
 
 data Principal = Principal
   { principalName :: PrincipalName
-  , principalKnows :: Map Constant Knowledge
+  , principalKnows :: [(Constant, Knowledge)]
   } deriving (Eq, Ord, Show)
 
 type PrincipalName = Text
-
-emptyPrincipal :: Principal
-emptyPrincipal = Principal "empty" Map.empty
 
 data Message = Message
   { messageSender :: PrincipalName

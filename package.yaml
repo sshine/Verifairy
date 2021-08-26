@@ -7,6 +7,7 @@ dependencies:
   - base
   - containers
   - megaparsec
+  - mtl
   - optparse-generic
   - text
 

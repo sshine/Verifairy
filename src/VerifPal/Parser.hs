@@ -118,8 +118,8 @@ query = do
       symbol "precondition"
       QueryOption <$> brackets message
 
-statements :: Parser (Map Constant Knowledge)
-statements = Map.fromList . concat <$> many knowledge
+statements :: Parser [(Constant, Knowledge)]
+statements = concat <$> many knowledge
 
 knowledge :: Parser [(Constant, Knowledge)]
 knowledge = choice [ knows, generates, leaks, assignment ]

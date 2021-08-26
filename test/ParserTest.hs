@@ -56,6 +56,9 @@ spec_parsePrincipal = do
     it "parses data/simple2.vp" $
       parseModel simple2 `shouldParse` simple2ast
 
+    it "parses data/freshness1.vp" $
+      parseModel freshness1 `shouldParse` simple2ast
+
 alice1 :: Text
 alice1 = $(embedStringFile "data/alice1.vp")
 
@@ -63,7 +66,7 @@ alice1ast :: Principal
 alice1ast = Principal{..}
   where
     principalName = "Alice"
-    principalKnows = Map.fromList
+    principalKnows =
       [ (Constant "c0", Public)
       , (Constant "c1", Public)
       , (Constant "m1", Private)
@@ -77,7 +80,7 @@ bob1ast :: Principal
 bob1ast = Principal{..}
   where
     principalName = "Bob"
-    principalKnows = Map.fromList
+    principalKnows =
       [ (Constant "c0", Public)
       , (Constant "c1", Public)
       , (Constant "m2", Private)
@@ -91,13 +94,13 @@ equations1 = $(embedStringFile "data/equations1.vp")
 equations1ast :: Principal
 equations1ast = Principal
   { principalName = "Server"
-  , principalKnows = Map.fromList
-      [ (Constant {constantName = "gx"},Assignment (G (EConstant (Constant {constantName = "x"}))))
-      , (Constant {constantName = "gxy"},Assignment ((:^:) (Constant {constantName = "gx"}) (EConstant (Constant {constantName = "y"}))))
-      , (Constant {constantName = "gy"},Assignment (G (EConstant (Constant {constantName = "y"}))))
-      , (Constant {constantName = "gyx"},Assignment ((:^:) (Constant {constantName = "gy"}) (EConstant (Constant {constantName = "x"}))))
-      , (Constant {constantName = "x"},Generates)
+  , principalKnows =
+      [ (Constant {constantName = "x"},Generates)
       , (Constant {constantName = "y"},Generates)
+      , (Constant {constantName = "gx"},Assignment (G (EConstant (Constant {constantName = "x"}))))
+      , (Constant {constantName = "gy"},Assignment (G (EConstant (Constant {constantName = "y"}))))
+      , (Constant {constantName = "gxy"},Assignment ((:^:) (Constant {constantName = "gx"}) (EConstant (Constant {constantName = "y"}))))
+      , (Constant {constantName = "gyx"},Assignment ((:^:) (Constant {constantName = "gy"}) (EConstant (Constant {constantName = "x"}))))
       ]
   }
 
@@ -107,44 +110,42 @@ alice1model = $(embedStringFile "data/alice1model.vp")
 alice1modelast :: Model
 alice1modelast = Model
   { modelAttacker = Active
-  , modelParts = [ ModelPrincipal (Principal { principalName = "Alice"
-                                             , principalKnows = Map.fromList [(Constant {constantName = "a"},Generates)
-                                                                         ,(Constant {constantName = "c0"},Public)
-                                                                         ,(Constant {constantName = "c1"},Public)
-                                                                         ,(Constant {constantName = "m1"},Private)
-                                                                         ]
-                                             }
-                                  )
-                 ]
+  , modelParts = [ ModelPrincipal (Principal { principalName = "Alice", principalKnows = aliceKnows })]
   }
+  where
+    aliceKnows =
+      [ (Constant {constantName = "c0"},Public)
+      , (Constant {constantName = "c1"},Public)
+      , (Constant {constantName = "m1"},Private)
+      , (Constant {constantName = "a"},Generates)
+      ]
 
 bob1model :: Text
 bob1model = $(embedStringFile "data/bob1model.vp")
 
 bob1modelast :: Model
-bob1modelast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "Bob", principalKnows = Map.fromList [(Constant {constantName = "b"},Generates),(Constant {constantName = "c0"},Public),(Constant {constantName = "c1"},Public),(Constant {constantName = "gb"},Assignment (G (EConstant (Constant {constantName = "b"})))),(Constant {constantName = "m2"},Private)]})]}
+bob1modelast = Model
+  { modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "Bob", principalKnows = bobKnows })] }
+  where
+    bobKnows =
+      [ (Constant {constantName = "c0"},Public)
+      , (Constant {constantName = "c1"},Public)
+      , (Constant {constantName = "m2"},Private)
+      , (Constant {constantName = "b"},Generates)
+      , (Constant {constantName = "gb"},Assignment (G (EConstant (Constant {constantName = "b"}))))
+      ]
 
 simple1 :: Text
 simple1 = $(embedStringFile "data/simple1.vp")
 
 simple1ast :: Model
-simple1ast = Model
-  { modelAttacker = Active
-  , modelParts = [ ModelPrincipal (Principal { principalName = "Alice"
-                                             , principalKnows = Map.fromList [(Constant {constantName = "a"},Generates)
-                                             , (Constant {constantName = "ga"}
-                                             , Assignment (G (EConstant (Constant {constantName = "a"}))))]})
-                 , ModelMessage (Message {messageSender = "Alice", messageReceiver = "Bob", messageConstants = [Constant {constantName = "ga"}]})
-                 , ModelPrincipal (Principal {principalName = "Bob", principalKnows = Map.fromList [(Constant {constantName = "b"},Generates),(Constant {constantName = "e1"},Assignment (EPrimitive (AEAD_ENC (EConstant (Constant {constantName = "ss_a"})) (EConstant (Constant {constantName = "m1"})) (EConstant (Constant {constantName = "gb"}))) HasntQuestionMark)),(Constant {constantName = "gb"},Assignment (G (EConstant (Constant {constantName = "b"})))),(Constant {constantName = "m1"},Private),(Constant {constantName = "ss_a"},Assignment ((:^:) (Constant {constantName = "ga"}) (EConstant (Constant {constantName = "b"}))))]})
-                 , ModelMessage (Message {messageSender = "Bob", messageReceiver = "Alice", messageConstants = [Constant {constantName = "gb"},Constant {constantName = "e1"}]})
-                 , ModelPrincipal (Principal {principalName = "Alice", principalKnows = Map.fromList [(Constant {constantName = "e1_dec"},Assignment (EPrimitive (AEAD_DEC (EConstant (Constant {constantName = "ss_b"})) (EConstant (Constant {constantName = "e1"})) (EConstant (Constant {constantName = "gb"}))) HasQuestionMark)),(Constant {constantName = "ss_b"},Assignment ((:^:) (Constant {constantName = "gb"}) (EConstant (Constant {constantName = "a"}))))]})]
-  }
+simple1ast = Model {modelAttacker = Active, modelParts = [ModelPrincipal (Principal {principalName = "Alice", principalKnows = [(Constant {constantName = "a"},Generates),(Constant {constantName = "ga"},Assignment (G (EConstant (Constant {constantName = "a"}))))]}),ModelMessage (Message {messageSender = "Alice", messageReceiver = "Bob", messageConstants = [Constant {constantName = "ga"}]}),ModelPrincipal (Principal {principalName = "Bob", principalKnows = [(Constant {constantName = "m1"},Private),(Constant {constantName = "b"},Generates),(Constant {constantName = "gb"},Assignment (G (EConstant (Constant {constantName = "b"})))),(Constant {constantName = "ss_a"},Assignment ((:^:) (Constant {constantName = "ga"}) (EConstant (Constant {constantName = "b"})))),(Constant {constantName = "e1"},Assignment (EPrimitive (AEAD_ENC (EConstant (Constant {constantName = "ss_a"})) (EConstant (Constant {constantName = "m1"})) (EConstant (Constant {constantName = "gb"}))) HasntQuestionMark))]}),ModelMessage (Message {messageSender = "Bob", messageReceiver = "Alice", messageConstants = [Constant {constantName = "gb"},Constant {constantName = "e1"}]}),ModelPrincipal (Principal {principalName = "Alice", principalKnows = [(Constant {constantName = "ss_b"},Assignment ((:^:) (Constant {constantName = "gb"}) (EConstant (Constant {constantName = "a"})))),(Constant {constantName = "e1_dec"},Assignment (EPrimitive (AEAD_DEC (EConstant (Constant {constantName = "ss_b"})) (EConstant (Constant {constantName = "e1"})) (EConstant (Constant {constantName = "gb"}))) HasQuestionMark))]})]}
 
 simple2 :: Text
 simple2 = $(embedStringFile "data/simple2.vp")
 
 simple2ast :: Model
-simple2ast = Model {modelAttacker = Active, modelParts = [ModelPrincipal (Principal {principalName = "Alice", principalKnows = Map.fromList [(Constant {constantName = "a"},Generates),(Constant {constantName = "ga"},Assignment (G (EConstant (Constant {constantName = "a"}))))]}),ModelMessage (Message {messageSender = "Alice", messageReceiver = "Bob", messageConstants = [Constant {constantName = "ga"}]}),ModelPrincipal (Principal {principalName = "Bob", principalKnows = Map.fromList [(Constant {constantName = "b"},Generates),(Constant {constantName = "e1"},Assignment (EPrimitive (AEAD_ENC (EConstant (Constant {constantName = "ss_a"})) (EConstant (Constant {constantName = "m1"})) (EConstant (Constant {constantName = "gb"}))) HasntQuestionMark)),(Constant {constantName = "gb"},Assignment (G (EConstant (Constant {constantName = "b"})))),(Constant {constantName = "m1"},Private),(Constant {constantName = "ss_a"},Assignment ((:^:) (Constant {constantName = "ga"}) (EConstant (Constant {constantName = "b"}))))]}),ModelMessage (Message {messageSender = "Bob", messageReceiver = "Alice", messageConstants = [Constant {constantName = "gb"},Constant {constantName = "e1"}]}),ModelPrincipal (Principal {principalName = "Alice", principalKnows = Map.fromList [(Constant {constantName = "e1_dec"},Assignment (EPrimitive (AEAD_DEC (EConstant (Constant {constantName = "ss_b"})) (EConstant (Constant {constantName = "e1"})) (EConstant (Constant {constantName = "gb"}))) HasQuestionMark)),(Constant {constantName = "ss_b"},Assignment ((:^:) (Constant {constantName = "gb"}) (EConstant (Constant {constantName = "a"}))))]}),ModelQueries [Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "e1"}}, queryOptions = Nothing},Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "m1"}}, queryOptions = Nothing},Query {queryKind = AuthenticationQuery {authenticationMessage = Message {messageSender = "Bob", messageReceiver = "Alice", messageConstants = [Constant {constantName = "e1"}]}}, queryOptions = Nothing},Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "ss_a"},Constant {constantName = "ss_b"}]}, queryOptions = Nothing}]]}
+simple2ast = Model {modelAttacker = Active, modelParts = [ModelPrincipal (Principal {principalName = "Alice", principalKnows = [(Constant {constantName = "a"},Generates),(Constant {constantName = "ga"},Assignment (G (EConstant (Constant {constantName = "a"}))))]}),ModelMessage (Message {messageSender = "Alice", messageReceiver = "Bob", messageConstants = [Constant {constantName = "ga"}]}),ModelPrincipal (Principal {principalName = "Bob", principalKnows = [(Constant {constantName = "m1"},Private),(Constant {constantName = "b"},Generates),(Constant {constantName = "gb"},Assignment (G (EConstant (Constant {constantName = "b"})))),(Constant {constantName = "ss_a"},Assignment ((:^:) (Constant {constantName = "ga"}) (EConstant (Constant {constantName = "b"})))),(Constant {constantName = "e1"},Assignment (EPrimitive (AEAD_ENC (EConstant (Constant {constantName = "ss_a"})) (EConstant (Constant {constantName = "m1"})) (EConstant (Constant {constantName = "gb"}))) HasntQuestionMark))]}),ModelMessage (Message {messageSender = "Bob", messageReceiver = "Alice", messageConstants = [Constant {constantName = "gb"},Constant {constantName = "e1"}]}),ModelPrincipal (Principal {principalName = "Alice", principalKnows = [(Constant {constantName = "ss_b"},Assignment ((:^:) (Constant {constantName = "gb"}) (EConstant (Constant {constantName = "a"})))),(Constant {constantName = "e1_dec"},Assignment (EPrimitive (AEAD_DEC (EConstant (Constant {constantName = "ss_b"})) (EConstant (Constant {constantName = "e1"})) (EConstant (Constant {constantName = "gb"}))) HasQuestionMark))]}),ModelQueries [Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "e1"}}, queryOptions = Nothing},Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "m1"}}, queryOptions = Nothing},Query {queryKind = AuthenticationQuery {authenticationMessage = Message {messageSender = "Bob", messageReceiver = "Alice", messageConstants = [Constant {constantName = "e1"}]}}, queryOptions = Nothing},Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "ss_a"},Constant {constantName = "ss_b"}]}, queryOptions = Nothing}]]}
 
 message1 :: Text
 message1 = $(embedStringFile "data/message1.vp")
@@ -157,4 +158,10 @@ phase1 = $(embedStringFile "data/phase1.vp")
 
 phase1ast :: Phase
 phase1ast = Phase 42
+
+freshness1 :: Text
+freshness1 = $(embedStringFile "data/freshness1.vp")
+
+freshness1ast :: Model
+freshness1ast = simple1ast
 
