@@ -16,10 +16,19 @@ data ModelState = ModelState
   , msErrors :: [ModelError]
   } deriving (Eq, Ord, Show)
 
+emptyModelState :: ModelState
+emptyModelState = ModelState
+  { msConstants = Map.empty
+  , msErrors = []
+  }
+
 type EvalM a = State ModelState a
 
 -- TODO: Check if constants are unique
 -- TODO: Check if a given variable is fresh
+
+process' :: Model -> ModelState
+process' model = execState (process model) emptyModelState
 
 process :: Model -> State ModelState ()
 process Model{..} =

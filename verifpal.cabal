@@ -14,8 +14,8 @@ library
   exposed-modules:
       VerifPal.Types
       VerifPal.Parser
-  other-modules:
       VerifPal.Check
+  other-modules:
       Paths_verifpal
   hs-source-dirs:
       src
@@ -35,6 +35,8 @@ test-suite test
   type: exitcode-stdio-1.0
   main-is: test.hs
   other-modules:
+      Cases
+      CheckTest
       ParserTest
       Paths_verifpal
   hs-source-dirs:

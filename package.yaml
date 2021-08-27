@@ -19,6 +19,7 @@ library:
   exposed-modules:
     - VerifPal.Types
     - VerifPal.Parser
+    - VerifPal.Check
   source-dirs: src
 
 tests:
