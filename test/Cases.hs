@@ -158,6 +158,30 @@ bad_generatesknows = $(embedStringFile "data/bad_generatesknows.vp")
 bad_generatesknows_ast :: Model
 bad_generatesknows_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "x"},Generates)]})]}
 
+abknows :: Text
+abknows = $(embedStringFile "data/abknows.vp")
+
+abknowsast :: Model
+abknowsast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelQueries [Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "x"}}, queryOptions = Nothing}]]}
+
+bad_publicprivate :: Text
+bad_publicprivate = $(embedStringFile "data/bad_publicprivate.vp")
+
+bad_publicprivate_ast :: Model
+bad_publicprivate_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "x"},Public)]})]}
+
+bad_passwordprivate :: Text
+bad_passwordprivate = $(embedStringFile "data/bad_passwordprivate.vp")
+
+bad_passwordprivate_ast :: Model
+bad_passwordprivate_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "x"},Password)]})]}
+
+bad_generatesknows :: Text
+bad_generatesknows = $(embedStringFile "data/bad_generatesknows.vp")
+
+bad_generatesknows_ast :: Model
+bad_generatesknows_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "x"},Generates)]})]}
+
 -- Negative cases
 
 dup1model, dup2model, dup3model, dup4model :: Model
