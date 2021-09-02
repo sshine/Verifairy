@@ -60,4 +60,14 @@ spec_parsePrincipal = do
     it "parses data/freshness1.vp" $
       parseModel freshness1 `shouldParse` freshness1ast
 
+    it "parses data/abknows.vp" $
+      parseModel abknows `shouldParse` abknowsast
 
+    it "parses data/bad_publicprivate.vp" $
+      parseModel bad_publicprivate `shouldParse` bad_publicprivate_ast
+
+    it "parses data/bad_passwordprivate.vp" $
+      parseModel bad_passwordprivate `shouldParse` bad_passwordprivate_ast
+
+    it "parses data/bad_generatesknows.vp" $
+      parseModel bad_generatesknows `shouldParse` bad_generatesknows_ast

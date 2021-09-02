@@ -1,0 +1,3 @@
+attacker [ passive ]
+principal A [ knows private x ]
+principal B [ generates     x ]

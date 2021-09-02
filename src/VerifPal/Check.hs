@@ -41,9 +41,14 @@ processModelPart (ModelPrincipal (Principal name knows)) = do
 processKnowledge :: (Constant, Knowledge) -> State ModelState ()
 processKnowledge (constant, knowledge) = do
   constants <- gets msConstants
-  if Map.member constant constants
-    then addError (OverlappingConstant constant)
-    else modify (\st -> st { msConstants = Map.insert constant knowledge constants })
+  case (knowledge, Map.lookup constant constants) of
+    ( Public, Just (Public)) -> modify (\st -> st)
+    ( Password, Just (Password)) -> modify (\st -> st)
+    ( Private, Just (Private)) -> modify (\st -> st)
+    (_, Just Leaks) -> modify (\st -> st)
+    (Leaks, Just (_)) -> modify (\st -> st { msConstants = Map.insert constant knowledge constants } )
+    (_, Nothing) -> modify (\st -> st { msConstants = Map.insert constant knowledge constants })
+    (_, Just _) -> addError (OverlappingConstant constant)
 
 addError :: ModelError -> State ModelState ()
 addError err = modify (\st -> st { msErrors = err : msErrors st })

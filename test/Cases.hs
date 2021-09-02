@@ -121,6 +121,30 @@ freshness1 = $(embedStringFile "data/freshness1.vp")
 freshness1ast :: Model
 freshness1ast = Model {modelAttacker = Active, modelParts = [ModelPrincipal (Principal {principalName = "Alice", principalKnows = [(Constant {constantName = "a"},Private),(Constant {constantName = "b"},Generates),(Constant {constantName = "ha"},Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "a"})]) HasntQuestionMark)),(Constant {constantName = "hb"},Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "b"})]) HasntQuestionMark))]}),ModelMessage (Message {messageSender = "Alice", messageReceiver = "Bob", messageConstants = [Constant {constantName = "ha"},Constant {constantName = "hb"}]}),ModelPrincipal (Principal {principalName = "Bob", principalKnows = [(Constant {constantName = "a"},Private),(Constant {constantName = "_"},Assignment (EPrimitive (ASSERT (EConstant (Constant {constantName = "ha"})) (EPrimitive (HASH [EConstant (Constant {constantName = "a"})]) HasntQuestionMark)) HasntQuestionMark))]}),ModelQueries [Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "ha"}}, queryOptions = Nothing},Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "hb"}}, queryOptions = Nothing}]]}
 
+abknows :: Text
+abknows = $(embedStringFile "data/abknows.vp")
+
+abknowsast :: Model
+abknowsast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelQueries [Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "x"}}, queryOptions = Nothing}]]}
+
+bad_publicprivate :: Text
+bad_publicprivate = $(embedStringFile "data/bad_publicprivate.vp")
+
+bad_publicprivate_ast :: Model
+bad_publicprivate_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "x"},Public)]})]}
+
+bad_passwordprivate :: Text
+bad_passwordprivate = $(embedStringFile "data/bad_passwordprivate.vp")
+
+bad_passwordprivate_ast :: Model
+bad_passwordprivate_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "x"},Password)]})]}
+
+bad_generatesknows :: Text
+bad_generatesknows = $(embedStringFile "data/bad_generatesknows.vp")
+
+bad_generatesknows_ast :: Model
+bad_generatesknows_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "x"},Generates)]})]}
+
 -- Negative cases
 
 duplicateModel :: Model
