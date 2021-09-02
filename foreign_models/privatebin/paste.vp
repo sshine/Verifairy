@@ -1,0 +1,46 @@
+attacker[passive]
+
+principal Server[]
+
+principal Reader[]
+
+principal Creator[
+	knows private paste
+	knows password optional_secret
+	generates key, cipher_iv, kdf_salt
+	// PBKDF2
+	kdf_key1 = HKDF(kdf_salt, CONCAT(key, optional_secret), cipher_iv)
+	cipher_text = AEAD_ENC(kdf_key1, paste, CONCAT(cipher_iv, kdf_salt))
+]
+
+Creator -> Server: cipher_text, cipher_iv, kdf_salt
+
+principal Server [
+	generates paste_id
+]
+
+Server -> Creator: paste_id
+
+phase[1]
+
+Creator -> Reader: paste_id, key, optional_secret
+
+phase[2]
+
+// in response to: Reader -> Server: paste_id
+Server -> Reader: cipher_text, cipher_iv, kdf_salt
+
+principal Reader[
+	kdf_key2 = HKDF(kdf_salt, CONCAT(key, optional_secret), cipher_iv)
+	dec_paste = AEAD_DEC(kdf_key2, cipher_text, CONCAT(cipher_iv, kdf_salt))?
+]
+
+queries[
+	// paste can be obtained by the attacker, because they get the same information as Reader:
+	confidentiality? paste
+	// both key and optional_password can be obtained even by a passive attacker:
+	confidentiality? key
+	confidentiality? optional_secret
+	// the server or the attacker can spoof the message:
+	authentication? Creator -> Reader: cipher_text
+]

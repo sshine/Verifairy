@@ -1,0 +1,26 @@
+// SPDX-FileCopyrightText: © 2019-2021 Nadim Kobeissi <nadim@symbolic.software>
+// SPDX-License-Identifier: GPL-3.0-only
+
+attacker [active]
+
+principal Alice[
+	generates b
+]
+
+Alice -> Bob: b
+
+principal Bob[
+	knows private a
+	generates c
+	generates d
+	leaks c
+	h1, h2, h3 = HKDF(a, b, nil)
+	h4, h5, h6 = HKDF(c, c, nil)
+	h7, h8, h9 = HKDF(a, c, d)
+]
+
+queries[
+	unlinkability? h1, h2, h3
+	unlinkability? h4, h5, h6
+	unlinkability? h7, h8, h9
+]

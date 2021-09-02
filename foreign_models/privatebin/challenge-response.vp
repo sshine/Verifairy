@@ -1,0 +1,60 @@
+attacker[passive]
+
+principal Server[]
+
+principal Reader[]
+
+principal Creator[
+	knows private paste
+	knows password optional_secret
+	generates key1, key2, cipher_iv, kdf_salt
+	// PBKDF2
+	kdf_key1 = HKDF(kdf_salt, CONCAT(key1, key2, optional_secret), cipher_iv)
+	challenge1 = HKDF(key1, CONCAT(key2, optional_secret), key1)
+	cipher_text = AEAD_ENC(kdf_key1, paste, CONCAT(cipher_iv, kdf_salt))
+]
+
+Creator -> Server: cipher_text, cipher_iv, kdf_salt, challenge1
+
+principal Server [
+	generates paste_id
+	response1 = MAC(paste_id, challenge1)
+]
+
+Server -> Creator: paste_id
+
+phase[1]
+
+Creator -> Reader: paste_id, key1, key2, optional_secret
+
+phase[2]
+
+principal Reader[
+	challenge2 = HKDF(key1, CONCAT(key2, optional_secret), key1)
+	response2 = MAC(paste_id, challenge2)
+]
+
+// and also paste_id, but verifpal doesn't see the point in passing already known constants
+Reader -> Server: response2
+
+principal Server[
+	_ = ASSERT(response1, response2)?
+]
+
+Server -> Reader: cipher_text, cipher_iv, kdf_salt
+
+principal Reader[
+	kdf_key2 = HKDF(kdf_salt, CONCAT(key1, key2, optional_secret), cipher_iv)
+	dec_paste = AEAD_DEC(kdf_key2, cipher_text, CONCAT(cipher_iv, kdf_salt))?
+]
+
+queries[
+	// paste can be obtained by the attacker, because they get the same information as Reader:
+	confidentiality? paste
+	// both key1, key2 and optional_password can be obtained even by a passive attacker:
+	confidentiality? key1
+	confidentiality? key2
+	confidentiality? optional_secret
+	// the server or the attacker can spoof the message:
+	authentication? Creator -> Reader: cipher_text
+]
