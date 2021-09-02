@@ -18,16 +18,16 @@ import Test.Hspec.Megaparsec
 import Test.Tasty.Hspec
 
 import VerifPal.Types
-import VerifPal.Check (process', ModelState(..), emptyModelState)
+import VerifPal.Check (process, ModelState(..), emptyModelState)
 
 import Cases
 
 spec_parsePrincipal :: Spec
 spec_parsePrincipal = do
-  describe "process'" $ do
+  describe "process" $ do
     it "validates data/alice1.vp" $
-      process' alice1modelast `shouldBe` emptyModelState
+      process alice1modelast `shouldBe` emptyModelState
 
     it "rejects model with duplicates" $
-      process' alice1modelast `shouldBe` emptyModelState
+      process alice1modelast `shouldBe` emptyModelState
 
