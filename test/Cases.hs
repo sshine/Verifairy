@@ -147,18 +147,13 @@ bad_generatesknows_ast = Model {modelAttacker = Passive, modelParts = [ModelPrin
 
 -- Negative cases
 
-duplicateModel :: Model
-duplicateModel = Model
-  { modelAttacker = Passive
-  , modelParts =
-      [ ModelPrincipal (Principal "Alice" aliceKnows)
-      , ModelPrincipal (Principal "Bob" bobKnows)
-      ]
-  }
-  where
-    aliceKnows =
-      [ (Constant "x", Private)
-      , (Constant "x", Private)
-      ]
+dup1model, dup2model, dup3model, dup4model :: Model
+dup1model = Model Passive [mp "Alice" [privx, privx]]
+dup2model = Model Passive [mp "Alice" [privx, pubx]]
+dup3model = Model Passive [mp "Alice" [privx], mp "Bob" [privx]]
+dup4model = Model Passive [mp "Alice" [privx], mp "Bob" [pubx]]
 
-    bobKnows = []
+mp name knows = ModelPrincipal (Principal name knows)
+privx = (Constant "x", Private)
+pubx = (Constant "x", Public)
+

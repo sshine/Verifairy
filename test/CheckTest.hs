@@ -18,15 +18,18 @@ import Test.Hspec.Megaparsec
 import Test.Tasty.Hspec
 
 import VerifPal.Types
-import VerifPal.Check (process', ModelState(..), emptyModelState, ModelError(..))
+import VerifPal.Check (process, ModelState(..), emptyModelState, ModelError(..))
 
 import Cases
 
-spec_parsePrincipal :: Spec
-spec_parsePrincipal = do
-  describe "process'" $ do
+shouldOverlapWith modelState constant =
+  msErrors modelState `shouldContain` [OverlappingConstant constant]
+
+spec_process :: Spec
+spec_process = do
+  describe "process" $ do
     it "validates data/alice1.vp" $
-      process' alice1modelast `shouldBe`
+      process alice1modelast `shouldBe`
       ModelState {
           msConstants = Map.fromList [
               (Constant {constantName = "a"},Generates),
@@ -35,26 +38,29 @@ spec_parsePrincipal = do
               (Constant {constantName = "m1"},Private)
           ], msErrors = []}
 
-    it "rejects model with duplicates" $
-      process' alice1modelast `shouldBe` emptyModelState
+    it "rejects model with duplicates" $ do
+      process dup1model `shouldOverlapWith` Constant "x"
+      process dup2model `shouldOverlapWith` Constant "x"
+      process dup3model `shouldOverlapWith` Constant "x"
+      process dup4model `shouldOverlapWith` Constant "x"
 
     it "validates data/abknows.vp" $
-      process' abknowsast `shouldBe` emptyModelState
+      process abknowsast `shouldBe` emptyModelState
 
     it "rejects model with conflicting knows public/knows private" $
-      process' bad_publicprivate_ast `shouldBe` ModelState {
+      process bad_publicprivate_ast `shouldBe` ModelState {
           msConstants = Map.fromList [(Constant {constantName = "x"},Private)],
           msErrors = [OverlappingConstant (Constant {constantName = "x"})]
       }
 
     it "rejects model with conflicting generates/knows private" $
-      process' bad_generatesknows_ast `shouldBe` ModelState {
+      process bad_generatesknows_ast `shouldBe` ModelState {
           msConstants = Map.fromList [(Constant {constantName = "x"},Private)],
           msErrors = [OverlappingConstant (Constant {constantName = "x"})]
       }
 
     it "rejects model with conflicting knows private/knows password" $
-      process' bad_passwordprivate_ast `shouldBe` ModelState {
+      process bad_passwordprivate_ast `shouldBe` ModelState {
           msConstants = Map.fromList [(Constant {constantName = "x"},Private)],
           msErrors = [OverlappingConstant (Constant {constantName = "x"})]
       }
