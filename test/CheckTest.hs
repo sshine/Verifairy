@@ -52,6 +52,7 @@ spec_parsePrincipal = do
           msConstants = Map.fromList [(Constant {constantName = "x"},Private)],
           msErrors = [OverlappingConstant (Constant {constantName = "x"})]
       }
+
     it "rejects model with conflicting knows private/knows password" $
       process' bad_passwordprivate_ast `shouldBe` ModelState {
           msConstants = Map.fromList [(Constant {constantName = "x"},Private)],
