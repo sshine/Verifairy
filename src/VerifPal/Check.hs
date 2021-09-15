@@ -10,6 +10,7 @@ import Data.Maybe (isJust)
 
 data ModelError
   = OverlappingConstant Constant
+  | MissingConstant Constant
   deriving (Eq, Ord, Show)
 
 data ModelState = ModelState
@@ -39,12 +40,30 @@ processModelPart :: ModelPart -> State ModelState ()
 processModelPart (ModelPrincipal (Principal name knows)) = do
   mapM_ (processKnowledge name) knows
 
+processModelPart (ModelMessage (Message {..})) = do
+  pure ()
+
+processModelPart (ModelPhase (Phase {..})) = do
+  pure ()
+
+processModelPart (ModelQueries queries) = do
+  mapM_ processQuery queries
+
 processKnowledge :: PrincipalName -> (Constant, Knowledge) -> State ModelState ()
 processKnowledge _principalName (constant, knowledge) = do
   hasOverlappingConstant <- hasConstant constant
+  -- FIXME: Two people can actually have the same knowledge
   if hasOverlappingConstant
     then addError (OverlappingConstant constant)
     else addConstant constant knowledge
+
+processQuery :: Query -> State ModelState ()
+processQuery (Query (FreshnessQuery constant) queryOptions) = do
+  knowledge <- getConstant constant
+  case knowledge of
+    Nothing -> addError (MissingConstant constant)
+    Just Generates -> pure ()
+    Just other -> pure () -- FIXME: Was constant computed from a fresh constant?
 
 getConstant :: Constant -> State ModelState (Maybe Knowledge)
 getConstant constant = gets $ Map.lookup constant . msConstants

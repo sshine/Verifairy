@@ -54,6 +54,9 @@ spec_parsePrincipal = do
     it "parses data/simple1.vp" $
       parseModel simple1 `shouldParse` simple1ast
 
+    it "parses data/simple1_complete_active.vp" $
+      parseModel simple1_complete_active `shouldParse` simple1_complete_active_ast
+
     it "parses data/simple2.vp" $
       parseModel simple2 `shouldParse` simple2ast
 
