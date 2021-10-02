@@ -1,0 +1,20 @@
+// We're not sure what VerifPal says about this.
+// Active attacker should not be able to convince A of a different value for 'x',
+// because it already knows 'x' from before it was sent back. There are several
+// variations. We just want to check that equivalence is preserved across renaming.
+
+attacker[active]
+
+principal A[
+  generates x
+  y = x
+]
+principal B[]
+A -> B: x
+A -> B: [y]
+B -> A: x
+B -> A: [y]
+
+queries[
+  equivalence? x, y
+]

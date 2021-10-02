@@ -67,8 +67,14 @@ message = do
   symbol "->"
   messageReceiver <- name
   symbol ":"
-  messageConstants <- constant `sepBy1` comma
+  messageConstants <- messageConstant `sepBy1` comma
   pure Message{..}
+  where
+    messageConstant :: Parser (Constant, Guarded)
+    messageConstant = choice
+      [ (,) <$> constant <*> pure False
+      , (,) <$> brackets constant <*> pure True
+      ]
 
 phase :: Parser Phase
 phase = do

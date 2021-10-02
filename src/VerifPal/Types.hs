@@ -36,8 +36,10 @@ type PrincipalName = Text
 data Message = Message
   { messageSender :: PrincipalName
   , messageReceiver :: PrincipalName
-  , messageConstants :: [Constant]
+  , messageConstants :: [(Constant, Guarded)]
   } deriving (Eq, Ord, Show)
+
+type Guarded = Bool
 
 newtype Phase = Phase
   { phaseNumber :: Word
@@ -68,6 +70,9 @@ data QueryOption = QueryOption { queryOptionMessage :: Message }
 newtype Constant = Constant
   { constantName :: Text
   } deriving (Eq, Ord, Show)
+
+mkConst :: Text -> Expr
+mkConst = EConstant . Constant
 
 data Knowledge
   = Private   -- ^ Known ahead by principal only
@@ -137,7 +142,3 @@ data CheckedPrimitive
   = HasQuestionMark
   | HasntQuestionMark
   deriving (Eq, Ord, Show)
-
-
-mkConst :: Text -> Expr
-mkConst = EConstant . Constant
