@@ -74,3 +74,6 @@ spec_parsePrincipal = do
 
     it "parses data/bad_generatesknows.vp" $
       parseModel bad_generatesknows `shouldParse` bad_generatesknows_ast
+
+    it "parses foreign_models/verifpal/test/challengeresponse.vp" $
+      parseModel challengeResponse `shouldParse` challengeResponseModel

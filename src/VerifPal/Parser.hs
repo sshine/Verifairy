@@ -264,12 +264,27 @@ symbol = lexeme . void . chunk
 symbol1 = lexeme1 . void . chunk
 
 lexeme, lexeme1 :: Parser a -> Parser a
-lexeme = (<* space)
+-- lexeme = (<* space)
+lexeme p = do
+  res <- p
+  space
+  return res
 lexeme1 = (<* space1)
 
 space, space1 :: Parser ()
-space = void $ takeWhileP (Just "any whitespace") isSpace
-space1 = void $ takeWhile1P (Just "at least one whitespace") isSpace
+space = space' >> void (many comment1')
+space1 = space1' <|> comment1'
+
+space' = void $ takeWhileP (Just "any whitespace") isSpace
+space1' = void $ takeWhile1P (Just "at least one whitespace") isSpace
+
+comment1' = void . some $ do
+  chunk "//"
+  takeWhileP (Just "comment") (not . isNewLine)
+  space'
+  where
+    isNewLine = (== '\n')
+
 
 isIdentifierChar :: Char -> Bool
 isIdentifierChar c = isLetter c || isNumber c || c == '_'

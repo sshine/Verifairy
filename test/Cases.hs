@@ -169,3 +169,10 @@ mp name knows = ModelPrincipal (Principal name knows)
 privx = (Constant "x", Private)
 pubx = (Constant "x", Public)
 
+------------------------------------------------------------------------------
+
+challengeResponse :: Text
+challengeResponse = $(embedStringFile "foreign_models/verifpal/test/challengeresponse.vp")
+
+challengeResponseModel :: Model
+challengeResponseModel = Model Passive []
