@@ -35,6 +35,19 @@ shouldHave modelState (principalName, constants) =
     Just principalMap ->
       forM_ constants (\constant -> Map.member constant principalMap `shouldBe` True)
 
+shouldHaveFresh modelState constant =
+  msQueryResults modelState `shouldSatisfy` any isFresh
+  where
+    isFresh (Query (FreshnessQuery constant2) _queryOptions, True) =
+      Constant constant == constant2
+    isFresh _ = False
+
+shouldHaveNotFresh modelState constant =
+  msQueryResults modelState `shouldSatisfy` any isNotFresh
+  where
+    isNotFresh (Query (FreshnessQuery constant2) _queryOptions, False) =
+      Constant constant == constant2
+    isNotFresh _ = False
 
 mkModelState :: [(Text, Knowledge)] -> ModelState
 mkModelState constants = ModelState
@@ -87,3 +100,11 @@ spec_process = do
 
     it "rejects model with conflicting knows private/knows password" $
       process bad_passwordprivate_ast `shouldOverlapWith` Constant "x"
+
+spec_freshness :: Spec
+spec_freshness = do
+  describe "process" $ do
+    it "checks simple freshness query" $ do
+      let modelState = process freshness1model
+      modelState `shouldHaveFresh` "x"
+      modelState `shouldHaveNotFresh` "y"

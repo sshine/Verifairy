@@ -1,0 +1,9 @@
+attacker[passive]
+principal Alice[
+  generates x
+  knows private y
+]
+queries[
+  freshness? x // yes
+  freshness? y // no
+]

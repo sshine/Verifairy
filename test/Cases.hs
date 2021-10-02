@@ -14,6 +14,7 @@ import Data.Text.Read (hexadecimal)
 import Data.Void
 
 import VerifPal.Types
+import VerifPal.Parser
 
 alice1 :: Text
 alice1 = $(embedStringFile "data/alice1.vp")
@@ -176,3 +177,9 @@ challengeResponse = $(embedStringFile "foreign_models/verifpal/test/challengeres
 
 challengeResponseModel :: Model
 challengeResponseModel = Model {modelAttacker = Active, modelParts = [ModelPrincipal (Principal {principalName = "Server", principalKnows = [(Constant {constantName = "s"},Private),(Constant {constantName = "gs"},Assignment (G (EConstant (Constant {constantName = "s"}))))]}),ModelPrincipal (Principal {principalName = "Client", principalKnows = [(Constant {constantName = "c"},Private),(Constant {constantName = "gc"},Assignment (G (EConstant (Constant {constantName = "c"})))),(Constant {constantName = "nonce"},Generates)]}),ModelMessage (Message {messageSender = "Client", messageReceiver = "Server", messageConstants = [(Constant {constantName = "nonce"},False)]}),ModelPrincipal (Principal {principalName = "Server", principalKnows = [(Constant {constantName = "proof"},Assignment (EPrimitive (SIGN (EConstant (Constant {constantName = "s"})) (EConstant (Constant {constantName = "nonce"}))) HasntQuestionMark))]}),ModelMessage (Message {messageSender = "Server", messageReceiver = "Client", messageConstants = [(Constant {constantName = "gs"},True),(Constant {constantName = "proof"},False)]}),ModelPrincipal (Principal {principalName = "Client", principalKnows = [(Constant {constantName = "valid"},Assignment (EPrimitive (SIGNVERIF (EConstant (Constant {constantName = "gs"})) (EConstant (Constant {constantName = "nonce"})) (EConstant (Constant {constantName = "proof"}))) HasQuestionMark)),(Constant {constantName = "attestation"},Generates),(Constant {constantName = "signed"},Assignment (EPrimitive (SIGN (EConstant (Constant {constantName = "c"})) (EConstant (Constant {constantName = "attestation"}))) HasntQuestionMark))]}),ModelMessage (Message {messageSender = "Client", messageReceiver = "Server", messageConstants = [(Constant {constantName = "gc"},False),(Constant {constantName = "attestation"},False),(Constant {constantName = "signed"},False)]}),ModelPrincipal (Principal {principalName = "Server", principalKnows = [(Constant {constantName = "storage"},Assignment (EPrimitive (SIGNVERIF (EConstant (Constant {constantName = "gc"})) (EConstant (Constant {constantName = "attestation"})) (EConstant (Constant {constantName = "signed"}))) HasQuestionMark))]}),ModelQueries [Query {queryKind = AuthenticationQuery {authenticationMessage = Message {messageSender = "Server", messageReceiver = "Client", messageConstants = [(Constant {constantName = "proof"},False)]}}, queryOptions = Nothing},Query {queryKind = AuthenticationQuery {authenticationMessage = Message {messageSender = "Client", messageReceiver = "Server", messageConstants = [(Constant {constantName = "signed"},False)]}}, queryOptions = Nothing}]]}
+
+freshness1 :: Text
+freshness1 = $(embedStringFile "data/freshness1.vp")
+
+freshness1model :: Model
+freshness1model = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "Alice", principalKnows = [(Constant {constantName = "x"},Generates),(Constant {constantName = "y"},Private)]}),ModelQueries [Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "x"}}, queryOptions = Nothing},Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "y"}}, queryOptions = Nothing}]]}

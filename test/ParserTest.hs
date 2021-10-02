@@ -60,6 +60,9 @@ spec_parsePrincipal = do
     it "parses data/simple2.vp" $
       parseModel simple2 `shouldParse` simple2ast
 
+    it "parses data/freshness1.vp" $
+      parseModel freshness1 `shouldParse` freshness1model
+
     it "parses data/freshness2.vp" $
       parseModel freshness2 `shouldParse` freshness2ast
 

@@ -23,6 +23,7 @@ data ModelState = ModelState
   , msPrincipalConstants :: Map PrincipalName (Map Constant (Knowledge, ProcessingCounter))
   , msProcessingCounter  :: ProcessingCounter
   , msErrors             :: [ModelError]
+  , msQueryResults       :: [(Query, Bool)]
   } deriving (Eq, Ord, Show)
 
 type ProcessingCounter = Int
@@ -33,6 +34,7 @@ emptyModelState = ModelState
   , msPrincipalConstants = Map.empty
   , msProcessingCounter = 0
   , msErrors = []
+  , msQueryResults = []
   }
 
 type EvalM a = State ModelState a
@@ -78,12 +80,11 @@ processKnowledge principalName (constant, knowledge) = do
       else addError (OverlappingConstant constant "can't generate the same thing twice")
 
 processQuery :: Query -> State ModelState ()
-processQuery (Query (FreshnessQuery constant) queryOptions) = do
+processQuery query@(Query (FreshnessQuery constant) queryOptions) = do
   knowledge <- getConstant constant
   case knowledge of
     Nothing -> addError (MissingConstant constant "herp derp")
-    Just Generates -> pure ()
-    Just other -> pure () -- FIXME: Was constant computed from a fresh constant?
+    Just knowledge -> addQueryResult query (knowledge == Generates)
 
 processQuery (Query (ConfidentialityQuery constant) queryOptions) = do
   addError (NotImplemented "confidentiality query not implemented") -- FIXME
@@ -99,6 +100,10 @@ canOverlap = \case
   Leaks -> True
   Generates -> False
   Assignment _ -> False
+
+addQueryResult :: Query -> Bool -> State ModelState ()
+addQueryResult query result = modify $ \state ->
+  state { msQueryResults = msQueryResults state <> [(query, result)] }
 
 hasConstant :: Constant -> Knowledge -> State ModelState Bool
 hasConstant constant knows1 = do
