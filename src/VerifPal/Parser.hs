@@ -177,10 +177,10 @@ expr = choice [ g, primitive, constHat ]
       , prim3 "AEAD_DEC" AEAD_DEC
       , prim2 "PKE_ENC" PKE_ENC
       , prim2 "PKE_DEC" PKE_DEC
-      , prim2 "SIGN" SIGN
       , prim3 "SIGNVERIF" SIGNVERIF
-      , prim4 "RINGSIGN" RINGSIGN
+      , prim2 "SIGN" SIGN
       , prim5 "RIGNSIGNVERIF" RINGSIGNVERIF
+      , prim4 "RINGSIGN" RINGSIGN
       , prim2 "BLIND" BLIND
       , prim3 "UNBLIND" UNBLIND
       , prim1 "SHAMIR_SPLIT" SHAMIR_SPLIT
