@@ -78,6 +78,15 @@ spec_parsePrincipal = do
     it "parses foreign_models/verifpal/test/challengeresponse.vp" $
       parseModel challengeResponse `shouldParse` challengeResponseModel
 
+    it "parses data/knows_freshness.vp" $
+      parseModel knows_freshness `shouldParse` knows_freshness_ast
+
+    it "parses data/freshness_aliased.vp" $
+      parseModel freshness_aliased `shouldParse` freshness_aliased_ast
+
+    it "parses data/freshness_concat.vp" $
+      parseModel freshness_concat `shouldParse` freshness_concat_ast
+
     it "parses data/abknows.vp" $
       parseModel abknows `shouldParse` abknowsast
 
@@ -89,3 +98,15 @@ spec_parsePrincipal = do
 
     it "parses data/bad_generatesknows.vp" $
       parseModel bad_generatesknows `shouldParse` bad_generatesknows_ast
+
+    it "parses data/bad_undefinedconstant_in_cfquery.vp" $
+      parseModel bad_undefinedconstant_in_cfquery `shouldParse` bad_undefinedconstant_in_cfquery_ast
+
+    it "parses data/bad_early_constant.vp" $
+      parseModel bad_early_constant `shouldParse` bad_early_constant_ast
+
+    it "parses data/concat.vp" $
+      parseModel model_concat `shouldParse` model_concat_ast
+
+    it "parses data/bad_knows_freshness.vp" $
+      parseModel bad_knows_freshness `shouldParse` bad_knows_freshness_ast

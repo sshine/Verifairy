@@ -1,0 +1,11 @@
+attacker[passive]
+principal A[
+  generates a
+  b = a
+  c = b
+]
+queries[
+  freshness? a
+  freshness? b
+  freshness? c
+]

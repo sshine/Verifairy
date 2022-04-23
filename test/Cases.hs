@@ -128,17 +128,27 @@ phase1 = $(embedStringFile "data/phase1.vp")
 phase1ast :: Phase
 phase1ast = Phase 42
 
+freshness1 :: Text
+freshness1 = $(embedStringFile "data/freshness1.vp")
+freshness1ast = Model {modelAttacker = Active, modelParts = [ModelPrincipal (Principal {principalName = "Alice", principalKnows = [(Constant {constantName = "a"},Private),(Constant {constantName = "b"},Generates),(Constant {constantName = "ha"},Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "a"})]) HasntQuestionMark)),(Constant {constantName = "hb"},Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "b"})]) HasntQuestionMark))]}),ModelMessage (Message {messageSender = "Alice", messageReceiver = "Bob", messageConstants = [(Constant {constantName = "ha"},False),(Constant {constantName = "hb"},False)]}),ModelPrincipal (Principal {principalName = "Bob", principalKnows = [(Constant {constantName = "a"},Private),(Constant {constantName = "_"},Assignment (EPrimitive (ASSERT (EConstant (Constant {constantName = "ha"})) (EPrimitive (HASH [EConstant (Constant {constantName = "a"})]) HasntQuestionMark)) HasntQuestionMark))]}),ModelQueries [Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "ha"}}, queryOptions = Nothing},Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "hb"}}, queryOptions = Nothing}]]}
+freshness1model :: Model
+freshness1model = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "Alice", principalKnows = [(Constant {constantName = "x"},Generates),(Constant {constantName = "y"},Private)]}),ModelQueries [Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "x"}}, queryOptions = Nothing},Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "y"}}, queryOptions = Nothing}]]}
+
 freshness2 :: Text
 freshness2 = $(embedStringFile "data/freshness2.vp")
 
 freshness2ast :: Model
 freshness2ast = Model {modelAttacker = Active, modelParts = [ModelPrincipal (Principal {principalName = "Alice", principalKnows = [(Constant {constantName = "a"},Private),(Constant {constantName = "b"},Generates),(Constant {constantName = "ha"},Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "a"})]) HasntQuestionMark)),(Constant {constantName = "hb"},Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "b"})]) HasntQuestionMark))]}),ModelMessage (Message {messageSender = "Alice", messageReceiver = "Bob", messageConstants = [(Constant {constantName = "ha"},False),(Constant {constantName = "hb"},False)]}),ModelPrincipal (Principal {principalName = "Bob", principalKnows = [(Constant {constantName = "a"},Private),(Constant {constantName = "_"},Assignment (EPrimitive (ASSERT (EConstant (Constant {constantName = "ha"})) (EPrimitive (HASH [EConstant (Constant {constantName = "a"})]) HasntQuestionMark)) HasntQuestionMark))]}),ModelQueries [Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "ha"}}, queryOptions = Nothing},Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "hb"}}, queryOptions = Nothing}]]}
 
+freshness_concat :: Text
+freshness_concat = $(embedStringFile "data/freshness_concat.vp")
+freshness_concat_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "a"},Generates),(Constant {constantName = "b"},Assignment (EPrimitive (CONCAT [EConstant (Constant {constantName = "a"})]) HasntQuestionMark)),(Constant {constantName = "c"},Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "b"})]) HasntQuestionMark)),(Constant {constantName = "d"},Assignment (EPrimitive (CONCAT [EConstant (Constant {constantName = "c"})]) HasntQuestionMark))]}),ModelQueries [Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "b"}}, queryOptions = Nothing},Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "c"}}, queryOptions = Nothing},Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "d"}}, queryOptions = Nothing}]]}
+
 abknows :: Text
 abknows = $(embedStringFile "data/abknows.vp")
 
 abknowsast :: Model
-abknowsast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelQueries [Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "x"}}, queryOptions = Nothing}]]}
+abknowsast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelQueries [Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "x"}}, queryOptions = Nothing}]] }
 
 bad_publicprivate :: Text
 bad_publicprivate = $(embedStringFile "data/bad_publicprivate.vp")
@@ -158,29 +168,96 @@ bad_generatesknows = $(embedStringFile "data/bad_generatesknows.vp")
 bad_generatesknows_ast :: Model
 bad_generatesknows_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "x"},Generates)]})]}
 
-abknows :: Text
-abknows = $(embedStringFile "data/abknows.vp")
+bad_undefinedconstant_in_cfquery :: Text
+bad_undefinedconstant_in_cfquery = $(embedStringFile "data/bad_undefinedconstant_in_cfquery.vp")
+bad_undefinedconstant_in_cfquery_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelQueries [Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "y"}}, queryOptions = Nothing}]]}
 
-abknowsast :: Model
-abknowsast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelQueries [Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "x"}}, queryOptions = Nothing}]]}
+bad_early_constant :: Text
+bad_early_constant = $(embedStringFile "data/bad_early_constant.vp")
+bad_early_constant_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = []}),ModelPrincipal (Principal {principalName = "B", principalKnows = []}),ModelMessage (Message {messageSender = "A", messageReceiver = "B", messageConstants = [(Constant {constantName = "yo"},False)]}),ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "yo"},Private)]})]}
 
-bad_publicprivate :: Text
-bad_publicprivate = $(embedStringFile "data/bad_publicprivate.vp")
+model_concat :: Text
+model_concat = $(embedStringFile "data/concat.vp")
+model_concat_ast = Model {
+  modelAttacker = Passive,
+    modelParts = [
+      ModelPrincipal (
+          Principal {
+              principalName = "A",
+                principalKnows = [
+                  (Constant {constantName = "a"},Private),
+                  (Constant {constantName = "b"},Private),
+                  (Constant {constantName = "c"},
+                    Assignment (
+                      EPrimitive (
+                          CONCAT [
+                              EConstant (Constant {constantName = "a"}),
+                              EConstant (Constant {constantName = "b"})]                                                       ) HasntQuestionMark))
+                  ]
+              })]}
 
-bad_publicprivate_ast :: Model
-bad_publicprivate_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "x"},Public)]})]}
+bad_knows_freshness :: Text
+bad_knows_freshness = $(embedStringFile "data/bad_knows_freshness.vp")
+bad_knows_freshness_ast = Model {
+  modelAttacker = Passive,
+  modelParts = [
+    ModelPrincipal (
+        Principal {
+            principalName = "A",
+            principalKnows = [
+                  (Constant {constantName = "a"},Private)
+              ]
+          }),
+   ModelQueries [ Query {
+                    queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "a"}},
+                    queryOptions=Nothing
+                    }]
+   ]}
 
-bad_passwordprivate :: Text
-bad_passwordprivate = $(embedStringFile "data/bad_passwordprivate.vp")
+knows_freshness :: Text
+knows_freshness = $(embedStringFile "data/knows_freshness.vp")
+knows_freshness_ast = Model {
+  modelAttacker = Passive,
+  modelParts = [
+    ModelPrincipal (
+        Principal {
+            principalName = "A",
+            principalKnows = [
+                  (Constant {constantName = "a"},Generates)
+              ]
+          }),
+   ModelQueries [ Query {
+                    queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "a"}},
+                    queryOptions=Nothing
+                    }]
+   ]}
 
-bad_passwordprivate_ast :: Model
-bad_passwordprivate_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "x"},Password)]})]}
+freshness_aliased :: Text
+freshness_aliased = $(embedStringFile "data/freshness_aliased.vp")
+freshness_aliased_ast = Model {
+  modelAttacker = Passive,
+  modelParts = [
+    ModelPrincipal (
+        Principal {
+            principalName = "A",
+            principalKnows = [
+                  (Constant {constantName = "a"},Generates),
+                  (Constant {constantName = "b"},Assignment (EConstant (Constant {constantName = "a"}))),
+                  (Constant {constantName = "c"},Assignment (EConstant (Constant {constantName = "b"})))
+              ]
+          }),
+   ModelQueries [
+        Query {
+            queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "a"}},
+              queryOptions=Nothing},
+        Query {
+            queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "b"}},
+              queryOptions=Nothing},
+        Query {
+            queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "c"}},
+              queryOptions=Nothing}
+        ]]}
 
-bad_generatesknows :: Text
-bad_generatesknows = $(embedStringFile "data/bad_generatesknows.vp")
-
-bad_generatesknows_ast :: Model
-bad_generatesknows_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "x"},Private)]}),ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "x"},Generates)]})]}
 
 -- Negative cases
 
@@ -202,8 +279,31 @@ challengeResponse = $(embedStringFile "foreign_models/verifpal/test/challengeres
 challengeResponseModel :: Model
 challengeResponseModel = Model {modelAttacker = Active, modelParts = [ModelPrincipal (Principal {principalName = "Server", principalKnows = [(Constant {constantName = "s"},Private),(Constant {constantName = "gs"},Assignment (G (EConstant (Constant {constantName = "s"}))))]}),ModelPrincipal (Principal {principalName = "Client", principalKnows = [(Constant {constantName = "c"},Private),(Constant {constantName = "gc"},Assignment (G (EConstant (Constant {constantName = "c"})))),(Constant {constantName = "nonce"},Generates)]}),ModelMessage (Message {messageSender = "Client", messageReceiver = "Server", messageConstants = [(Constant {constantName = "nonce"},False)]}),ModelPrincipal (Principal {principalName = "Server", principalKnows = [(Constant {constantName = "proof"},Assignment (EPrimitive (SIGN (EConstant (Constant {constantName = "s"})) (EConstant (Constant {constantName = "nonce"}))) HasntQuestionMark))]}),ModelMessage (Message {messageSender = "Server", messageReceiver = "Client", messageConstants = [(Constant {constantName = "gs"},True),(Constant {constantName = "proof"},False)]}),ModelPrincipal (Principal {principalName = "Client", principalKnows = [(Constant {constantName = "valid"},Assignment (EPrimitive (SIGNVERIF (EConstant (Constant {constantName = "gs"})) (EConstant (Constant {constantName = "nonce"})) (EConstant (Constant {constantName = "proof"}))) HasQuestionMark)),(Constant {constantName = "attestation"},Generates),(Constant {constantName = "signed"},Assignment (EPrimitive (SIGN (EConstant (Constant {constantName = "c"})) (EConstant (Constant {constantName = "attestation"}))) HasntQuestionMark))]}),ModelMessage (Message {messageSender = "Client", messageReceiver = "Server", messageConstants = [(Constant {constantName = "gc"},False),(Constant {constantName = "attestation"},False),(Constant {constantName = "signed"},False)]}),ModelPrincipal (Principal {principalName = "Server", principalKnows = [(Constant {constantName = "storage"},Assignment (EPrimitive (SIGNVERIF (EConstant (Constant {constantName = "gc"})) (EConstant (Constant {constantName = "attestation"})) (EConstant (Constant {constantName = "signed"}))) HasQuestionMark))]}),ModelQueries [Query {queryKind = AuthenticationQuery {authenticationMessage = Message {messageSender = "Server", messageReceiver = "Client", messageConstants = [(Constant {constantName = "proof"},False)]}}, queryOptions = Nothing},Query {queryKind = AuthenticationQuery {authenticationMessage = Message {messageSender = "Client", messageReceiver = "Server", messageConstants = [(Constant {constantName = "signed"},False)]}}, queryOptions = Nothing}]]}
 
-freshness1 :: Text
-freshness1 = $(embedStringFile "data/freshness1.vp")
+-- principal A[generates a; c = b ]
+-- this should give an error that "b" is unbound
+bad_assignment_to_undefined_ast = Model {
+  modelAttacker = Passive,
+  modelParts = [
+    ModelPrincipal (
+        Principal {
+            principalName = "A",
+            principalKnows = [
+                  (Constant {constantName = "a"},Generates),
+                  (Constant {constantName = "c"},Assignment (EConstant (Constant {constantName = "b"})))
+              ]
+          })]}
 
-freshness1model :: Model
-freshness1model = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "Alice", principalKnows = [(Constant {constantName = "x"},Generates),(Constant {constantName = "y"},Private)]}),ModelQueries [Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "x"}}, queryOptions = Nothing},Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "y"}}, queryOptions = Nothing}]]}
+duplicateModel :: Model
+duplicateModel = Model
+  { modelAttacker = Passive
+  , modelParts =
+      [ ModelPrincipal (Principal "Alice" aliceKnows)
+      , ModelPrincipal (Principal "Bob" bobKnows)
+      ]
+  }
+  where
+    aliceKnows =
+      [ (Constant "x", Private)
+      , (Constant "x", Private)
+      ]
+    bobKnows = []

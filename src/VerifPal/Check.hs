@@ -12,11 +12,25 @@ import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 
+--import Data.Graph.Inductive.Graph (mkGraph, LNode, LEdge, OrdGr, DynGraph, empty, Graph)
+--import Data.Graph.Inductive.PatriciaTree
+
 data ModelError
   = OverlappingConstant Constant Text
   | MissingConstant Constant Text
   | NotImplemented Text
   deriving (Eq, Ord, Show)
+
+-- graph mapping constants to the expressions that *directly* contain them
+-- expressions are either obtained
+--
+-- attacker obtains constants either through:
+-- Knowledge Leaks
+-- Message Constant where
+--   msConstants[Constant] =
+--     ( (Assignment Expr)) that can be unlocked
+type KTree =
+  Map Constant [Knowledge]
 
 data ModelState = ModelState
   { msConstants          :: Map Constant Knowledge
@@ -52,28 +66,53 @@ processM Model{..} =
 processModelPart :: ModelPart -> State ModelState ()
 processModelPart (ModelPrincipal (Principal name knows)) = do
   mapM_ (processKnowledge name) knows
+processModelPart (ModelQueries qs) = do
+  -- TODO if the user wrote the same query twice
+  -- we should collapse them to a single query
+  -- and probably issue a warning?
+  mapM_ processQuery qs
 
-processModelPart (ModelMessage (Message {..})) = do
-  pure ()
+processModelPart (ModelMessage (Message sender receiver consts)) = do
+  forM_ consts $ \(cconst,cguard) -> do
+    -- check the sender knows all the constants being sent:
+    hasPrincipalConstantOrError sender cconst "sender reference to unknown constant"
+    -- add them to the knowledge of the receiver so they know them too:
+    maybeknowledge <- getConstant cconst
+    case maybeknowledge of
+      Nothing -> pure ()
+      Just knowledge -> upsertPrincipalConstant receiver cconst knowledge
+    -- TODO add consts to attacker knowledge
 
 processModelPart (ModelPhase (Phase {..})) = do
   pure ()
 
-processModelPart (ModelQueries queries) = do
-  mapM_ processQuery queries
-
 processKnowledge :: PrincipalName -> (Constant, Knowledge) -> State ModelState ()
 processKnowledge principalName (constant, knowledge) = do
+  -- we need to consider three "knowledges":
+  -- 1) does it exist anywhere
+  -- 2) does this principal know about it
+  -- 3) does the attacker know about it?
   existingConstant <- getConstant constant
   case (existingConstant, knowledge) of
     (Nothing, Public) -> addConstant principalName constant knowledge
     (Nothing, Private) -> addConstant principalName constant knowledge
     (Nothing, Password) -> addConstant principalName constant knowledge
     (Nothing, Generates) -> addConstant principalName constant knowledge
-    (Nothing, Assignment _) -> addError (NotImplemented "assignment knowledge")
+    (Nothing, Assignment exp) ->
+      -- For assignments we check that all the referenced constants exist
+      -- in the knowledge map associated with the current principal.
+      -- The ambition is to catch both references to undefined constants (typos)
+      -- and cases where a reference is made to a constant that exists, but it isn't
+      -- known by (principalName):
+      foldConstantsInExpr (addConstant principalName constant knowledge)
+      exp (\c st -> do
+         st >>= pure (hasPrincipalConstantOrError principalName c "assignment to unbound constant")
+      )
     (Just _, Generates) -> addError (OverlappingConstant constant "can't generate the same thing twice")
     (Just _, Assignment _) -> addError (OverlappingConstant constant "can't assign to the same name twice")
-    (_, Leaks) -> modifyConstant principalName constant Leaks
+    (_, Leaks) ->
+      -- TODO give it to the attacker
+      modifyConstant principalName constant Leaks
     (Just existingKnowledge, _) ->
       if existingKnowledge == knowledge
       then upsertPrincipalConstant principalName constant knowledge
@@ -81,10 +120,10 @@ processKnowledge principalName (constant, knowledge) = do
 
 processQuery :: Query -> State ModelState ()
 processQuery query@(Query (FreshnessQuery constant) queryOptions) = do
-  knowledge <- getConstant constant
-  case knowledge of
-    Nothing -> addError (MissingConstant constant "herp derp")
-    Just knowledge -> addQueryResult query (knowledge == Generates)
+  constantExistsOrError constant
+  cs <- gets msConstants ;
+  addQueryResult query $ mapConstants False constant (
+    \c a -> a || Just Generates == Map.lookup c cs) cs
 
 processQuery (Query (ConfidentialityQuery constant) queryOptions) = do
   addError (NotImplemented "confidentiality query not implemented") -- FIXME
@@ -109,6 +148,23 @@ hasConstant :: Constant -> Knowledge -> State ModelState Bool
 hasConstant constant knows1 = do
   knows2 <- getConstant constant
   pure (Just knows1 == knows2)
+
+hasPrincipalConstant :: PrincipalName -> Constant -> State ModelState Bool
+hasPrincipalConstant principalName constant = do
+  currentCount <- getCounter
+  principalMap <- gets (fromMaybe Map.empty . Map.lookup principalName . msPrincipalConstants)
+  case Map.lookup constant principalMap of
+    Just (know, cou) | cou <= currentCount -> pure True
+    Just _ -> pure False -- not yet
+    Nothing -> pure False
+
+hasPrincipalConstantOrError :: PrincipalName -> Constant -> Text -> State ModelState ()
+hasPrincipalConstantOrError principalName refconstant errorText = do
+  (\() ->
+     do xy <- hasPrincipalConstant principalName refconstant
+        if xy
+          then pure ()
+          else addError (MissingConstant refconstant errorText)) ()
 
 addConstant :: PrincipalName -> Constant -> Knowledge -> State ModelState ()
 addConstant principalName constant knowledge = do
@@ -147,17 +203,63 @@ getCounter = do
   modify (\st -> st { msProcessingCounter = count + 1 })
   pure count
 
-processKnowledge :: (Constant, Knowledge) -> State ModelState ()
-processKnowledge (constant, knowledge) = do
-  constants <- gets msConstants
-  case (knowledge, Map.lookup constant constants) of
-    ( Public, Just (Public)) -> modify (\st -> st)
-    ( Password, Just (Password)) -> modify (\st -> st)
-    ( Private, Just (Private)) -> modify (\st -> st)
-    (_, Just Leaks) -> modify (\st -> st)
-    (Leaks, Just (_)) -> modify (\st -> st { msConstants = Map.insert constant knowledge constants } )
-    (_, Nothing) -> modify (\st -> st { msConstants = Map.insert constant knowledge constants })
-    (_, Just _) -> addError (OverlappingConstant constant)
+-- note that this ONLY folds over the constants in an expression,
+-- NOT the knowledge maps, so it will not "jump" across maps of knowledge
+-- from other principals.
+foldConstantsInExpr :: acc -> Expr -> (Constant -> acc -> acc) -> acc
+foldConstantsInExpr acc o_exp f =
+  let dolist = foldl (\acc exp -> foldConstantsInExpr acc exp f) acc in
+  case o_exp of
+    G exp -> dolist [exp]
+    (:^:) c exp -> foldConstantsInExpr (f c acc) exp f
+    EConstant c -> f c acc
+    EPrimitive prim _ ->
+      case prim of
+        ASSERT e1 e2 -> dolist [e1, e2]
+        CONCAT exps -> dolist exps
+        SPLIT exp -> dolist [exp]
+        HASH exps -> dolist exps
+        MAC e1 e2 -> dolist [e1, e2]
+        HKDF e1 e2 e3 -> dolist [e1, e2, e3]
+        PW_HASH exps -> dolist exps
+        ENC e1 e2 -> dolist [e1, e2]
+        DEC e1 e2 -> dolist [e1, e2]
+        AEAD_ENC e1 e2 e3 -> dolist [e1, e2, e3]
+        AEAD_DEC e1 e2 e3 -> dolist [e1, e2, e3]
+        PKE_ENC e1 e2 -> dolist [e1, e2]
+        PKE_DEC e1 e2 -> dolist [e1, e2]
+        SIGN e1 e2 -> dolist [e1, e2]
+        SIGNVERIF e1 e2 e3 -> dolist [e1, e2, e3]
+        RINGSIGN e1 e2 e3 e4 -> dolist [e1, e2, e3, e4]
+        RINGSIGNVERIF e1 e2 e3 e4 e5 -> dolist [e1, e2, e3, e4, e5]
+        BLIND e1 e2 -> dolist [e1, e2]
+        UNBLIND e1 e2 e3 -> dolist [e1, e2, e3]
+        SHAMIR_SPLIT e1 -> dolist [e1]
+        SHAMIR_JOIN e1 e2 e3 -> dolist [e1, e2, e3]
+
+-- note that this can call f with the same constant
+-- several times:
+mapConstants :: a -> Constant -> (Constant -> a -> a) -> Map Constant Knowledge -> a
+mapConstants acc c f m =
+  case Map.lookup c m of
+    Nothing -> acc
+    Just vals ->
+      case vals of
+        Assignment exp ->
+          foldConstantsInExpr (f c acc) exp (\c a -> mapConstants a c f m)
+        Leaks -> f c acc
+        Password -> f c acc
+        Received _ -> f c acc
+        Generates -> f c acc
+        Public -> f c acc
+        Private -> f c acc
 
 addError :: ModelError -> State ModelState ()
 addError err = modify (\st -> st { msErrors = err : msErrors st })
+
+constantExistsOrError :: Constant -> State ModelState ()
+constantExistsOrError const = do
+  seen <- getConstant const ;
+  case seen of
+    Just _ -> return ()
+    Nothing -> addError (MissingConstant const "TODO")

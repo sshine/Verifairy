@@ -19,6 +19,9 @@ import Test.Tasty.Hspec
 
 import VerifPal.Types
 import VerifPal.Check (process, ModelState(..), emptyModelState, ModelError(..), ProcessingCounter)
+import VerifPal.Parser
+import Data.Map (Map)
+import qualified Data.Map as Map
 
 import Cases
 
@@ -27,16 +30,18 @@ shouldNotFail modelState =
 
 spec_parsePrincipal :: Spec
 spec_parsePrincipal = do
-  describe "process'" $ do
+  describe "process" $ do
     it "validates data/alice1.vp" $
-      process' alice1modelast `shouldBe`
+      process alice1modelast `shouldBe`
       ModelState {
+          msPrincipalConstants = fromList [("Alice",fromList [(Constant {constantName = "a"},(Generates,3)),(Constant {constantName = "c0"},(Public,0)),(Constant {constantName = "c1"},(Public,1)),(Constant {constantName = "m1"},(Private,2))])],
+          msProcessingCounter = 4,
           msConstants = fromList [
               (Constant {constantName = "a"},Generates),
               (Constant {constantName = "c0"},Public),
               (Constant {constantName = "c1"},Public),
               (Constant {constantName = "m1"},Private)
-          ], msErrors = []}
+          ], msErrors = [], msQueryResults = []}
 
 shouldOverlapWith modelState constant =
   msErrors modelState `shouldContain`
@@ -67,6 +72,7 @@ mkModelState constants = ModelState
   { msConstants = mkConstants constants
   , msPrincipalConstants = Map.empty
   , msProcessingCounter = 0
+  , msQueryResults = []
   , msErrors = []
   }
 
@@ -115,24 +121,121 @@ spec_process = do
       process bad_passwordprivate_ast `shouldOverlapWith` Constant "x"
 
     it "validates data/abknows.vp" $
-      process' abknowsast `shouldBe` emptyModelState
+      process abknowsast `shouldBe` ModelState {msConstants = fromList [(Constant {constantName = "x"},Private)], msPrincipalConstants = fromList [("A",fromList [(Constant {constantName = "x"},(Private,0))]),("B",fromList [(Constant {constantName = "x"},(Private,1))])],
+          msProcessingCounter = 2, msQueryResults = [], msErrors = [NotImplemented "confidentiality query not implemented"]}
+
+    it "validates data/knows_freshness.vp" $
+      process knows_freshness_ast `shouldBe` ModelState {
+      msConstants = fromList [(Constant {constantName = "a"},Generates)]
+        , msPrincipalConstants = fromList [("A",fromList [(Constant {constantName = "a"},(Generates,0))])],
+          msProcessingCounter = 1,
+          msQueryResults = [
+            (Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "a"}}, queryOptions = Nothing},
+             True -- <-- query satisfied, this is fresh
+            )
+            ], msErrors = []}
+
+    it "validates data/freshness_aliased.vp" $
+      process freshness_aliased_ast `shouldBe` ModelState {
+      msConstants = fromList [(Constant {constantName = "a"},Generates),(Constant {constantName = "b"},Assignment (EConstant (Constant {constantName = "a"}))),(Constant {constantName = "c"},Assignment (EConstant (Constant {constantName = "b"})))], msErrors = [],
+      msPrincipalConstants = fromList [("A",fromList [(Constant {constantName = "a"},(Generates,0)),(Constant {constantName = "b"},(Assignment (EConstant (Constant {constantName = "a"})),1)),(Constant {constantName = "c"},(Assignment (EConstant (Constant {constantName = "b"})),3))])],
+        msProcessingCounter = 5,
+        msQueryResults = [
+          (Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "a"}}, queryOptions = Nothing},True),
+          (Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "b"}}, queryOptions = Nothing},True),
+          (Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "c"}}, queryOptions = Nothing},True)
+                           ]}
+
+    it "validates data/freshness_concat.vp" $
+      process freshness_concat_ast `shouldBe` ModelState {
+      msConstants = fromList [
+          (Constant {constantName = "a"},Generates),
+          (Constant {constantName = "b"},Assignment (EPrimitive (CONCAT [EConstant (Constant {constantName = "a"})]) HasntQuestionMark)),
+          (Constant {constantName = "c"},Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "b"})]) HasntQuestionMark)),
+          (Constant {constantName = "d"},Assignment (EPrimitive (CONCAT [EConstant (Constant {constantName = "c"})]) HasntQuestionMark))],
+      msPrincipalConstants = fromList [
+          ("A",fromList [(Constant {constantName = "a"},(Generates,0)),
+                         (Constant {constantName = "b"},(Assignment (EPrimitive (CONCAT [EConstant (Constant {constantName = "a"})]) HasntQuestionMark),1)),
+                         (Constant {constantName = "c"},(Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "b"})]) HasntQuestionMark),3)),
+                         (Constant {constantName = "d"},(Assignment (EPrimitive (CONCAT [EConstant (Constant {constantName = "c"})]) HasntQuestionMark),5))])
+          ],
+      msProcessingCounter = 7, msErrors = [],
+      msQueryResults = [
+          (Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "b"}}, queryOptions = Nothing},True),
+          (Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "c"}}, queryOptions = Nothing},True),
+          (Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "d"}}, queryOptions = Nothing},True)
+      ]}
 
     it "rejects model with conflicting knows public/knows private" $
-      process' bad_publicprivate_ast `shouldBe` ModelState {
+      process bad_publicprivate_ast `shouldBe` ModelState {
           msConstants = fromList [(Constant {constantName = "x"},Private)],
-          msErrors = [OverlappingConstant (Constant {constantName = "x"})]
+          msErrors = [OverlappingConstant (Constant {constantName = "x"}) "can't generate the same thing twice"],
+          msPrincipalConstants = fromList [("A",fromList [(Constant {constantName = "x"},(Private,0))])],
+          msProcessingCounter = 1,
+          msQueryResults = []
       }
 
     it "rejects model with conflicting generates/knows private" $
-      process' bad_generatesknows_ast `shouldBe` ModelState {
+      process bad_generatesknows_ast `shouldBe` ModelState {
           msConstants = fromList [(Constant {constantName = "x"},Private)],
-          msErrors = [OverlappingConstant (Constant {constantName = "x"})]
+          msErrors = [OverlappingConstant (Constant {constantName = "x"}) "can't generate the same thing twice"],
+          msPrincipalConstants = fromList [("A",fromList [(Constant {constantName = "x"},(Private,0))])],
+          msProcessingCounter = 1,
+          msQueryResults = []
       }
     it "rejects model with conflicting knows private/knows password" $
-      process' bad_passwordprivate_ast `shouldBe` ModelState {
+      process bad_passwordprivate_ast `shouldBe` ModelState {
           msConstants = fromList [(Constant {constantName = "x"},Private)],
-          msErrors = [OverlappingConstant (Constant {constantName = "x"})]
+          msErrors = [OverlappingConstant (Constant {constantName = "x"}) "can't generate the same thing twice"],
+          msPrincipalConstants = fromList [("A",fromList [(Constant {constantName = "x"},(Private,0))])],
+          msProcessingCounter = 1,
+          msQueryResults = []
+          }
+    it "rejects model with missing constant in confidentialityquery" $
+      process bad_undefinedconstant_in_cfquery_ast `shouldBe` ModelState {
+          msConstants = fromList [(Constant {constantName = "x"},Private)],
+          msErrors = [MissingConstant (Constant {constantName = "y"}) "TODO"],
+          msPrincipalConstants = Map.empty,
+          msProcessingCounter = 1,
+          msQueryResults = []
       }
+    it "rejects model that sends constant before it's defined" $
+      process bad_early_constant_ast `shouldBe` ModelState {
+          msConstants = fromList [(Constant {constantName = "yo"},Private)],
+          msErrors = [MissingConstant (Constant {constantName = "yo"}) "sender reference to unknown constant"],
+          msPrincipalConstants = fromList [("A",fromList [(Constant {constantName = "yo"},(Private,1))])],
+          msProcessingCounter = 2,
+          msQueryResults = []
+      }
+    it "rejects model that that checks for freshness on (knows private)" $
+      process bad_knows_freshness_ast `shouldBe` ModelState {
+          msConstants = fromList [(Constant {constantName = "a"},Private)],
+          msPrincipalConstants = fromList [("A",fromList [(Constant {constantName = "a"},(Private,0))])],
+          msProcessingCounter = 1,
+          msErrors = [],
+          msQueryResults = [(Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "a"}}, queryOptions = Nothing},
+                             False -- <- query failed!
+                            )]
+      }
+
+    it "rejects model that references undefined constant" $
+      process bad_assignment_to_undefined_ast `shouldBe`  ModelState {
+      msConstants = fromList [
+          (Constant {constantName = "a"},
+           Generates),
+          (Constant {constantName = "c"}, Assignment (EConstant ( Constant {constantName = "b"})))
+      ],
+      msErrors = [MissingConstant (Constant{constantName="b"}) "assignment to unbound constant"],
+      msProcessingCounter = 3,
+      msPrincipalConstants = fromList [
+          ("A",fromList [
+              (Constant {constantName = "a"},(Generates,0)),
+                (Constant {constantName = "c"},(Assignment (EConstant (Constant {constantName = "b"})),1))
+              ])
+          ],
+      msQueryResults = []
+      }
+
 
 spec_freshness :: Spec
 spec_freshness = do

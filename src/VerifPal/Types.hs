@@ -81,6 +81,7 @@ data Knowledge
   | Password  -- ^ Alternative to Private, allows the attacker to guess
   | Leaks     -- ^ ?
   | Assignment Expr
+  | Received Int -- ^ received in a message, e.g. Public  after message has been sent. The Int counts messages
   deriving (Eq, Ord, Show)
 
 -- Primitives:

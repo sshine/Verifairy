@@ -1,0 +1,7 @@
+attacker [ passive ]
+principal A [ ]
+principal B [ ]
+A -> B: yo
+principal A [
+  knows private yo
+]

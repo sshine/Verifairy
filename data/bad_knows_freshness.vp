@@ -1,0 +1,7 @@
+attacker[passive]
+principal A[
+  knows private a
+]
+queries[
+  freshness? a
+]
