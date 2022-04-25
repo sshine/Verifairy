@@ -126,6 +126,7 @@ processQuery query@(Query (FreshnessQuery constant) queryOptions) = do
     \c a -> a || Just Generates == Map.lookup c cs) cs
 
 processQuery (Query (ConfidentialityQuery constant) queryOptions) = do
+  constantExistsOrError constant
   addError (NotImplemented "confidentiality query not implemented") -- FIXME
 
 getConstant :: Constant -> State ModelState (Maybe Knowledge)
