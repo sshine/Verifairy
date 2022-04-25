@@ -1,0 +1,12 @@
+attacker [passive]
+principal A [
+  knows private msg
+  knows private key
+  encrypted = ENC(key, msg)
+]
+principal B [  knows private key  ]
+A -> B: encrypted
+principal B [ from_a = DEC(key, encrypted) ]
+queries [
+  equivalence? msg, from_a
+]

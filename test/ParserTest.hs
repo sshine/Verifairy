@@ -110,3 +110,15 @@ spec_parsePrincipal = do
 
     it "parses data/bad_knows_freshness.vp" $
       parseModel bad_knows_freshness `shouldParse` bad_knows_freshness_ast
+
+    it "parses data/equivalence1.vp" $
+      parseModel equivalence1 `shouldParse` equivalence1_ast
+
+    it "parses data/equivalence2.vp" $
+      parseModel equivalence2 `shouldParse` equivalence2_ast
+
+    it "parses data/equivalence3.vp" $
+      parseModel equivalence3 `shouldParse` equivalence3_ast
+
+    it "parses data/equations2.vp" $
+      parseModel equations2 `shouldParse` equations2_ast

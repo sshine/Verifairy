@@ -61,6 +61,13 @@ shouldHave modelState (principalName, constants) =
     Just principalMap ->
       forM_ constants (\constant -> Map.member constant principalMap `shouldBe` True)
 
+shouldHaveEquivalence modelState wantedConstants =
+  msQueryResults modelState `shouldSatisfy` any predicate
+  where
+    predicate (Query (EquivalenceQuery actualConstants) _queryOptions, True) =
+      actualConstants == map (\c -> Constant c) wantedConstants
+    predicate _ = False
+
 shouldHaveFresh modelState constant =
   msQueryResults modelState `shouldSatisfy` any isFresh
   where
@@ -185,3 +192,36 @@ spec_freshness = do
       shouldNotFail modelState
       modelState `shouldHaveNotFresh` "a"
 
+spec_equivalence :: Spec
+spec_equivalence = do
+  describe "process" $ do
+    it "checks equivalence1 query" $ do
+      let modelState = process equivalence1_ast
+      shouldNotFail modelState
+      modelState `shouldBe` ModelState {
+        msConstants = fromList [
+            (Constant {constantName = "encrypted"},Assignment (EPrimitive (ENC (EConstant (Constant {constantName = "key"})) (EConstant (Constant {constantName = "msg"}))) HasntQuestionMark)),
+            (Constant {constantName = "from_a"},Assignment (EPrimitive (DEC (EConstant (Constant {constantName = "key"})) (EConstant (Constant {constantName = "encrypted"}))) HasntQuestionMark)),
+            (Constant {constantName = "key"},Private),
+            (Constant {constantName = "msg"},Private)],
+        msPrincipalConstants = fromList [("A",fromList [(Constant {constantName = "encrypted"},(Assignment (EPrimitive (ENC (EConstant (Constant {constantName = "key"})) (EConstant (Constant {constantName = "msg"}))) HasntQuestionMark),2)),(Constant {constantName = "key"},(Private,1)),(Constant {constantName = "msg"},(Private,0))]),("B",fromList [(Constant {constantName = "encrypted"},(Assignment (EPrimitive (ENC (EConstant (Constant {constantName = "key"})) (EConstant (Constant {constantName = "msg"}))) HasntQuestionMark),7)),(Constant {constantName = "from_a"},(Assignment (EPrimitive (DEC (EConstant (Constant {constantName = "key"})) (EConstant (Constant {constantName = "encrypted"}))) HasntQuestionMark),8)),(Constant {constantName = "key"},(Private,5))])],
+        msProcessingCounter = 11,
+        msErrors = [],
+        msQueryResults = [(Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "msg"},Constant {constantName = "from_a"}]}, queryOptions = Nothing},True)]}
+      modelState `shouldHaveEquivalence` ["msg", "from_a"]
+    it "checks equivalence2 query" $ do
+      let modelState = process equivalence2_ast
+      shouldNotFail modelState
+      modelState `shouldHaveEquivalence` ["a", "b_a"]
+      modelState `shouldHaveEquivalence` ["b", "b_b"]
+      modelState `shouldHaveEquivalence` ["c", "b_c"]
+    it "checks equivalence3 query" $ do
+      let modelState = process equivalence3_ast
+      shouldNotFail modelState
+      modelState `shouldHaveEquivalence` ["a", "b"]
+      modelState `shouldHaveEquivalence` ["c", "d"]
+    it "checks equations2 queries" $ do
+      let modelState = process equations2_ast
+      shouldNotFail modelState
+      -- TODO should NOT have: modelState `shouldHaveEquivalence` ["a", "b"]
+      modelState `shouldHaveEquivalence` ["gyx", "gxy"]

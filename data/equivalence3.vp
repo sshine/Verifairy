@@ -1,0 +1,11 @@
+attacker [passive]
+principal A [
+  knows private a
+  b = CONCAT(a)
+  c = HASH(b)
+  d = HASH(a)
+]
+queries [
+  equivalence? a,b
+  equivalence? c,d
+]

@@ -29,8 +29,6 @@ data ModelError
 -- Message Constant where
 --   msConstants[Constant] =
 --     ( (Assignment Expr)) that can be unlocked
-type KTree =
-  Map Constant [Knowledge]
 
 data ModelState = ModelState
   { msConstants          :: Map Constant Knowledge
@@ -129,6 +127,16 @@ processQuery (Query (ConfidentialityQuery constant) queryOptions) = do
   constantExistsOrError constant
   addError (NotImplemented "confidentiality query not implemented") -- FIXME
 
+processQuery query@(Query (EquivalenceQuery consts@([c1,c2])) queryOptions) = do
+  forM_ consts $ \cconst -> do
+    constantExistsOrError cconst
+  constmap <- gets msConstants ;
+  --c1 <- getConstant c1 ;
+  --c2 <- getConstant c2 ;
+  addQueryResult query $ equivalenceExpr
+    (canonicalizeExpr constmap (EConstant c1))
+    (canonicalizeExpr constmap (EConstant c2))
+
 getConstant :: Constant -> State ModelState (Maybe Knowledge)
 getConstant constant = gets $ Map.lookup constant . msConstants
 
@@ -203,6 +211,134 @@ getCounter = do
   count <- gets msProcessingCounter
   modify (\st -> st { msProcessingCounter = count + 1 })
   pure count
+
+quicksort :: Ord a => [a] -> [a]
+quicksort []     = []
+quicksort (p:xs) = (quicksort lesser) ++ [p] ++ (quicksort greater)
+    where
+        lesser  = filter (< p) xs
+        greater = filter (>= p) xs
+equationToList :: [CanonExpr] -> CanonExpr -> [CanonExpr]
+equationToList acc c =
+  case c of
+    ((:^^:) const b) ->  equationToList (equationToList [] const ++acc) b
+    (CG a) -> equationToList acc a
+    _ -> quicksort acc
+
+equivalenceExpr' :: CanonExpr -> CanonExpr -> Bool
+equivalenceExpr' o_e1 o_e2 =
+  case (o_e1, o_e2) of
+    -- Equations are kind of tricky:
+    -- it needs to hold that G^a^x^y^z === G^z^a^y^x etc,
+    -- the approach taken here is to sort the expressions (using Ord or whatever)
+    -- and then compare them term by term:
+    --
+    ((:^^:) a b, (:^^:) a' b')
+      | equivalenceExprs (equationToList [] ((:^^:) a  b ))
+                         (equationToList [] ((:^^:) a' b')) -> True
+    --
+    (CConstant c _, CConstant c' _) -> c == c'
+    -- Below we have some transformations, they are all guarded to avoid shorting
+    -- the match cases when they don't match.
+    -- TODO it might be a better strategy to have a "minimizeExpr" function to do
+    -- these; then we could reuse that to e.g. display things to the user?
+    --
+    -- Concat of a single value is equivalent to the value:
+    (e, CPrimitive (CONCAT [e']) _) | equivalenceExpr e e' -> True
+    -- Decryption of encrypted plaintext is equivalent to plaintext.
+    -- (encrypted) may not immediately be an ENC, so we need to recurse:
+    (e, CPrimitive (DEC key encrypted) _)
+      | equivalenceExpr encrypted (CPrimitive (ENC key e) HasntQuestionMark) -> True
+    --
+    (CPrimitive p _, CPrimitive p' _) -> equivalencePrimitive p p'
+    (CG e, CG e') -> equivalenceExpr e e'
+     -- default to False, TODO be careful with this as it may lead to
+     -- incorrect results if we are missing transformations:
+    _ -> False
+
+equivalenceExpr :: CanonExpr -> CanonExpr -> Bool
+equivalenceExpr e1 e2 = -- TODO cannot be bothered to do transformations both ways
+  equivalenceExpr' e1 e2 || equivalenceExpr' e2 e1
+
+equivalenceExprs [] [] = True
+equivalenceExprs (x:xs) (y:ys) = equivalenceExpr x y && equivalenceExprs xs ys
+equivalenceExprs _ _ = False
+
+equivalencePrimitive :: PrimitiveP CanonExpr -> PrimitiveP CanonExpr -> Bool
+equivalencePrimitive p1 p2 = do
+  let eqExpr e1 e2 = equivalenceExpr e1 e2
+  let eqExprs [] [] = True
+      eqExprs (x:xs) (y:ys) = eqExpr x y && eqExprs xs ys
+  case (p1, p2) of
+    -- simple equivalence: equivalent constructors, need to
+    -- compare the leaf exprs:
+    (ASSERT e1 e2, ASSERT e'1 e'2) -> eqExpr e1 e'1 && eqExpr e2 e'2
+    (CONCAT exps, CONCAT exps') -> eqExprs exps exps'
+    (SPLIT e, SPLIT e') -> eqExpr e e'
+    (HASH e, HASH e') -> eqExprs e e'
+    (CONCAT e, SPLIT (CPrimitive (CONCAT e') _TODO)) -> eqExprs e e'
+    (SPLIT (CPrimitive (CONCAT e') _TODO), CONCAT e) -> eqExprs e e'
+    (ENC e1 e2, ENC e'1 e'2) -> eqExpr e1 e'1 && eqExpr e2 e'2
+
+canonicalizePrimitive :: Map Constant Knowledge -> Primitive -> PrimitiveP CanonExpr
+canonicalizePrimitive m old =
+  mapPrimitiveP old (canonicalizeExpr m)
+
+data CanonExpr
+  = CG CanonExpr
+  | (:^^:) CanonExpr CanonExpr
+  | CConstant Constant CanonKnowledge
+  | CPrimitive (PrimitiveP CanonExpr) CheckedPrimitive
+  deriving (Eq, Ord, Show)
+data CanonKnowledge
+  = CPrivate
+  | CPublic
+  | CGenerates
+  | CPassword
+  deriving (Eq, Ord, Show)
+canonicalizeExpr :: Map Constant Knowledge -> Expr -> CanonExpr
+canonicalizeExpr m orig_exp = do
+  let self = canonicalizeExpr m
+  case orig_exp of
+    -- TODO we need special handling of G^y^x to G^x^y (sorted in order to check equivalence)
+    G exp -> CG (self exp)
+    (:^:) const exp -> (:^^:) (self (EConstant const)) (self exp)
+    EConstant const ->
+      case Map.lookup const m of
+        Just Private -> CConstant const CPrivate
+        Just Public -> CConstant const CPublic
+        Just Generates -> CConstant const CGenerates
+        Just Password -> CConstant const CPassword
+        Just (Assignment exp) -> self exp
+        Just (Received _) -> CConstant const CPublic -- TODO should never happen
+        Just Leaks -> CConstant const CPublic -- TODO should never happen
+        Nothing -> CConstant const CPublic -- TODO should never happen
+    EPrimitive p cp -> CPrimitive (mapPrimitiveP p self) cp
+
+mapPrimitiveP :: PrimitiveP a -> (a -> b) -> PrimitiveP b
+mapPrimitiveP prim f =
+  case prim of
+    ASSERT e1 e2 -> ASSERT (f e1) (f e2)
+    CONCAT exps -> CONCAT (map f exps)
+    SPLIT exp -> SPLIT (f exp)
+    HASH exps -> HASH (map f exps)
+    MAC e1 e2 -> MAC (f e1) (f e2)
+    HKDF e1 e2 e3 -> HKDF (f e1) (f e2) (f e3)
+    PW_HASH exps -> PW_HASH (map f exps)
+    ENC e1 e2 -> ENC (f e1) (f e2)
+    DEC e1 e2 -> DEC (f e1) (f e2)
+    AEAD_ENC e1 e2 e3 -> AEAD_ENC (f e1) (f e2) (f e3)
+    AEAD_DEC e1 e2 e3 -> AEAD_DEC (f e1) (f e2) (f e3)
+    PKE_ENC e1 e2 -> PKE_ENC (f e1) (f e2)
+    PKE_DEC e1 e2 -> PKE_DEC (f e1) (f e2)
+    SIGN e1 e2 -> SIGN (f e1) (f e2)
+    SIGNVERIF e1 e2 e3 -> SIGNVERIF (f e1) (f e2) (f e3)
+    RINGSIGN e1 e2 e3 e4 -> RINGSIGN (f e1) (f e2) (f e3) (f e4)
+    RINGSIGNVERIF e1 e2 e3 e4 e5 -> RINGSIGNVERIF (f e1) (f e2) (f e3) (f e4) (f e5)
+    BLIND e1 e2 -> BLIND (f e1) (f e2)
+    UNBLIND e1 e2 e3 -> UNBLIND (f e1) (f e2) (f e3)
+    SHAMIR_SPLIT e1 -> SHAMIR_SPLIT (f e1)
+    SHAMIR_JOIN e1 e2 e3 -> SHAMIR_JOIN (f e1) (f e2) (f e3)
 
 -- note that this ONLY folds over the constants in an expression,
 -- NOT the knowledge maps, so it will not "jump" across maps of knowledge

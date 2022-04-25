@@ -61,6 +61,11 @@ equations1ast = Principal
       ]
   }
 
+equations2 :: Text
+equations2 = $(embedStringFile "data/equations2.vp")
+equations2_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "Server", principalKnows = [(Constant {constantName = "x"},Generates),(Constant {constantName = "y"},Generates),(Constant {constantName = "gx"},Assignment (G (EConstant (Constant {constantName = "x"})))),(Constant {constantName = "gy"},Assignment (G (EConstant (Constant {constantName = "y"})))),(Constant {constantName = "gxy"},Assignment ((:^:) (Constant {constantName = "gx"}) (EConstant (Constant {constantName = "y"})))),(Constant {constantName = "gyx"},
+Assignment ((:^:) (Constant {constantName = "gy"}) (EConstant (Constant {constantName = "x"}))))]}),ModelQueries [Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "gx"},Constant {constantName = "gy"}]}, queryOptions = Nothing},Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "gyx"},Constant {constantName = "gxy"}]}, queryOptions = Nothing}]]}
+
 alice1model :: Text
 alice1model = $(embedStringFile "data/alice1model.vp")
 
@@ -143,6 +148,33 @@ freshness2ast = Model {modelAttacker = Active, modelParts = [ModelPrincipal (Pri
 freshness_concat :: Text
 freshness_concat = $(embedStringFile "data/freshness_concat.vp")
 freshness_concat_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "a"},Generates),(Constant {constantName = "b"},Assignment (EPrimitive (CONCAT [EConstant (Constant {constantName = "a"})]) HasntQuestionMark)),(Constant {constantName = "c"},Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "b"})]) HasntQuestionMark)),(Constant {constantName = "d"},Assignment (EPrimitive (CONCAT [EConstant (Constant {constantName = "c"})]) HasntQuestionMark))]}),ModelQueries [Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "b"}}, queryOptions = Nothing},Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "c"}}, queryOptions = Nothing},Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "d"}}, queryOptions = Nothing}]]}
+
+equivalence1 :: Text
+equivalence1 = $(embedStringFile "data/equivalence1.vp")
+equivalence1_ast = Model {
+  modelAttacker = Passive,
+  modelParts = [
+      ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "msg"},Private),(Constant {constantName = "key"},Private),(Constant {constantName = "encrypted"},Assignment (EPrimitive (ENC (EConstant (Constant {constantName = "key"})) (EConstant (Constant {constantName = "msg"}))) HasntQuestionMark))]}),
+      ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "key"},Private)]}),ModelMessage (Message {messageSender = "A", messageReceiver = "B", messageConstants = [(Constant {constantName = "encrypted"},False)]}),
+      ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "from_a"},Assignment (EPrimitive (DEC (EConstant (Constant {constantName = "key"})) (EConstant (Constant {constantName = "encrypted"}))) HasntQuestionMark))]}),
+      ModelQueries [Query {queryKind = EquivalenceQuery {equivalenceConstants = [
+          Constant {constantName = "msg"},
+          Constant {constantName = "from_a"}]}, queryOptions = Nothing}]]}
+
+equivalence2 :: Text
+equivalence2 = $(embedStringFile "data/equivalence2.vp")
+-- TODO we currently can't parse SPLIT()
+equivalence2_ast = Model {
+  modelAttacker = Passive,
+  modelParts = [
+      ModelPrincipal (
+          Principal {principalName = "A",
+                     principalKnows = [(Constant {constantName = "msg"},Private),(Constant {constantName = "key"},Private),(Constant {constantName = "encrypted"},Assignment (EPrimitive (ENC (EConstant (Constant {constantName = "key"})) (EConstant (Constant {constantName = "msg"}))) HasntQuestionMark))]}),ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "key"},Private)]}),ModelMessage (Message {messageSender = "A", messageReceiver = "B", messageConstants = [(Constant {constantName = "encrypted"},False)]}),ModelPrincipal (Principal {principalName = "B", principalKnows = [(Constant {constantName = "from_a"},Assignment (EPrimitive (DEC (EConstant (Constant {constantName = "key"})) (EConstant (Constant {constantName = "encrypted"}))) HasntQuestionMark))]}),ModelQueries [Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "a"},Constant {constantName = "b_a"}]}, queryOptions = Nothing}]]}
+
+equivalence3 :: Text
+equivalence3 = $(embedStringFile "data/equivalence3.vp")
+-- TODO we currently can't parse SPLIT()
+equivalence3_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "a"},Private),(Constant {constantName = "b"},Assignment (EPrimitive (CONCAT [EConstant (Constant {constantName = "a"})]) HasntQuestionMark)),(Constant {constantName = "c"},Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "b"})]) HasntQuestionMark)),(Constant {constantName = "d"},Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "a"})]) HasntQuestionMark))]}),ModelQueries [Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "a"},Constant {constantName = "b"}]}, queryOptions = Nothing},Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "c"},Constant {constantName = "d"}]}, queryOptions = Nothing}]]}
 
 abknows :: Text
 abknows = $(embedStringFile "data/abknows.vp")
