@@ -1,0 +1,21 @@
+attacker [passive]
+principal C [
+   generates q
+   generates w
+   generates e
+   r = CONCAT(q,w,e)
+   t, u, i= SPLIT(r)
+   o = SPLIT(CONCAT(i))
+   leaks q
+   leaks i
+]
+queries [
+ confidentiality? q // no, it was leaked
+ confidentiality? w // yes, alias u
+ confidentiality? e // no, equivalent to leaked i
+ confidentiality? r // yes (partially at least)
+ confidentiality? t // no, alias of q
+ confidentiality? u // yes, alias of w
+ confidentiality? i // no, leaked
+ confidentiality? o // no, equivalent to leaked i
+]
