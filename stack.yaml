@@ -1,1 +1,4 @@
 resolver: lts-18.12
+extra-deps:
+  - diagnose-1.8.1@sha256:2e799c0b2bba76a9c134ea537a8b36bc7a10313819d99c27e3f9934c73d3a5d9,5707
+

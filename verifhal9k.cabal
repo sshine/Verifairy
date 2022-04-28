@@ -32,6 +32,30 @@ library
     , text
   default-language: Haskell2010
 
+executable verifairy
+  main-is: Main.hs
+  other-modules:
+      Paths_verifhal9k
+  hs-source-dirs:
+      app
+  default-extensions:
+      OverloadedStrings
+      RecordWildCards
+  build-depends:
+      base
+    , containers
+    , diagnose ==1.8.1
+    , fgl
+    , filepath
+    , githash
+    , megaparsec
+    , mtl
+    , optparse-applicative
+    , optparse-generic
+    , text
+    , verifhal9k
+  default-language: Haskell2010
+
 test-suite test
   type: exitcode-stdio-1.0
   main-is: test.hs
