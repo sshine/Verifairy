@@ -3,7 +3,9 @@
 {-# LANGUAGE  MultiParamTypeClasses #-}
 module Main where
 
-import           Data.Foldable (for_)
+import Data.Function ((&))
+import           Control.Monad (when)
+import           Data.Foldable (for_, traverse_)
 import           Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
@@ -46,6 +48,20 @@ instance HasHints Void Text where
   -- hints :: Void -> [Text]
   hints _ = ["TODOwhatisthis"]
 
+prettifyQuery :: QueryKind -> String
+prettifyQuery (FreshnessQuery const) =
+  "freshness? " ++ (Text.unpack $ constantName const)
+prettifyQuery k = show k
+
+myAnnotate :: (Query, Bool) -> Doc AnsiStyle
+myAnnotate (q, res) =
+  let
+    prettified :: Doc AnsiStyle
+    prettified =
+      pretty $ prettifyQuery $ queryKind q
+  in
+    annotate (color (if res then Green else Red)) prettified
+
 argsHandler :: Args -> IO ()
 argsHandler Args { backend = backend
                  , srcFile = srcFile
@@ -63,29 +79,17 @@ argsHandler Args { backend = backend
       in printDiagnostic stderr True True 4 diag'
     Right model -> do
       Text.hPutStrLn stderr ("parsing file " <> Text.pack srcFile <> "...")
-      let ms = VerifPal.Check.process model in
-        do (case msErrors ms of
-                   [] -> pure ()
-                   errs -> do
-                     -- TODO should make a Diagnostic here for each of these:
-                     foldl (\io err -> io >>= \() -> print (show err)) (print "") (msErrors ms);
-                     exitFailure);
-           case msQueryResults ms of
-            [] -> pure ()
-            results ->
-              foldl (\io (q,res) -> io >>= \() -> -- TODO there must be a cleaner way
-                        do
-                          putDoc (annotate (color (if res then Green else Red))
-                                  (pretty
-                                   (case queryKind q of
-                                       FreshnessQuery const ->
-                                         ("freshness? " ++ (Text.unpack $ constantName const))::String
-                                       k -> (show k))
-                                  )
-                                 ) ;
-                          putStrLn ""
-                        -- (annotate Red (pretty $ show res))
-                    ) (print "") results
+      let ms = VerifPal.Check.process model
+      case msErrors ms of
+        [] -> putStrLn "No errors"
+        errs -> do
+          -- TODO should make a Diagnostic here for each of these:
+          traverse_ print (msErrors ms)
+          exitFailure
+      msQueryResults ms & map myAnnotate & for_ $ \annotated -> do
+          putDoc annotated
+          putStrLn ""
+        -- (annotate Red (pretty $ show res))
       --Text.writeFile outFilePath outText
 
 runArgsParser :: IO Args
