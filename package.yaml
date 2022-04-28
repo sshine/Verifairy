@@ -48,3 +48,5 @@ executables:
       - optparse-applicative
       - githash
       - diagnose == 1.8.1
+      - prettyprinter
+      - prettyprinter-ansi-terminal

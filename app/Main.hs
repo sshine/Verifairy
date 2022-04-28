@@ -19,7 +19,13 @@ import Error.Diagnose (printDiagnostic, addFile)
 import Error.Diagnose.Compat.Megaparsec ( HasHints(hints), errorDiagnosticFromBundle )
 --import Error.Diagnose.Compat.Megaparsec
 
+import Prettyprinter (Doc, Pretty (..), align, annotate, colon, hardline, lbracket, rbracket, space, width, (<+>))
+import Prettyprinter.Internal (Doc (..))
+import Prettyprinter.Render.Terminal (AnsiStyle, Color (..), bold, color, colorDull, putDoc)
+
 import VerifPal.Parser (parseModel)
+import VerifPal.Types (Query (..), QueryKind (..), Constant (..))
+import VerifPal.Check
 
 type OutputFile = (FilePath, Text)
 type Backend = FilePath -> Text -> Either Text [OutputFile]
@@ -56,8 +62,30 @@ argsHandler Args { backend = backend
         diag' = addFile diag srcFile (Text.unpack srcText)
       in printDiagnostic stderr True True 4 diag'
     Right model -> do
-      Text.hPutStrLn stderr ("parsing file " <> Text.pack "x" <> "...")
-      print "yo"
+      Text.hPutStrLn stderr ("parsing file " <> Text.pack srcFile <> "...")
+      let ms = VerifPal.Check.process model in
+        do (case msErrors ms of
+                   [] -> pure ()
+                   errs -> do
+                     -- TODO should make a Diagnostic here for each of these:
+                     foldl (\io err -> io >>= \() -> print (show err)) (print "") (msErrors ms);
+                     exitFailure);
+           case msQueryResults ms of
+            [] -> pure ()
+            results ->
+              foldl (\io (q,res) -> io >>= \() -> -- TODO there must be a cleaner way
+                        do
+                          putDoc (annotate (color (if res then Green else Red))
+                                  (pretty
+                                   (case queryKind q of
+                                       FreshnessQuery const ->
+                                         ("freshness? " ++ (Text.unpack $ constantName const))::String
+                                       k -> (show k))
+                                  )
+                                 ) ;
+                          putStrLn ""
+                        -- (annotate Red (pretty $ show res))
+                    ) (print "") results
       --Text.writeFile outFilePath outText
 
 runArgsParser :: IO Args
