@@ -40,9 +40,18 @@ data ModelState = ModelState
 
 type ProcessingCounter = Int
 
+-- Everyone knows the magic constant "nil" TODO reference manual?
+emptyConstantMap = Map.fromList [
+  (Constant {constantName="nil"}, Public)
+  ]
+
+emptyPrincipalConstantMap = Map.fromList [
+  (Constant {constantName="nil"}, (Public,0))
+  ]
+
 emptyModelState :: ModelState
 emptyModelState = ModelState
-  { msConstants = Map.empty
+  { msConstants = emptyConstantMap
   , msPrincipalConstants = Map.empty
   , msProcessingCounter = 0
   , msErrors = []
@@ -169,7 +178,7 @@ hasConstant constant knows1 = do
 hasPrincipalConstant :: PrincipalName -> Constant -> State ModelState Bool
 hasPrincipalConstant principalName constant = do
   currentCount <- getCounter
-  principalMap <- gets (fromMaybe Map.empty . Map.lookup principalName . msPrincipalConstants)
+  principalMap <- gets (fromMaybe emptyPrincipalConstantMap . Map.lookup principalName . msPrincipalConstants)
   case Map.lookup constant principalMap of
     Just (know, cou) | cou <= currentCount -> pure True
     Just _ -> pure False -- not yet
@@ -210,7 +219,7 @@ upsertConstant constant knowledge =
 upsertPrincipalConstant :: PrincipalName -> Constant -> Knowledge -> State ModelState ()
 upsertPrincipalConstant principalName constant knowledge = do
   count <- getCounter
-  principalMap <- gets (fromMaybe Map.empty . Map.lookup principalName . msPrincipalConstants)
+  principalMap <- gets (fromMaybe emptyPrincipalConstantMap . Map.lookup principalName . msPrincipalConstants)
   let newPrincipalMap = Map.insert constant (knowledge, count) principalMap
   modify $ \state -> state { msPrincipalConstants = Map.insert principalName newPrincipalMap (msPrincipalConstants state) }
 
