@@ -127,15 +127,23 @@ processQuery (Query (ConfidentialityQuery constant) queryOptions) = do
   constantExistsOrError constant
   addError (NotImplemented "confidentiality query not implemented") -- FIXME
 
-processQuery query@(Query (EquivalenceQuery consts@([c1,c2])) queryOptions) = do
+processQuery (Query (UnlinkabilityQuery consts) queryOptions) = do
+  forM_ consts $ \cconst -> do constantExistsOrError cconst
+  addError (NotImplemented "unlinkability query not implemented") -- FIXME
+
+processQuery (Query (AuthenticationQuery msg) queryOptions) = do
+  addError (NotImplemented "authentication query not implemented") -- FIXME
+
+processQuery query@(Query (EquivalenceQuery consts@(c1:cs)) queryOptions) = do
   forM_ consts $ \cconst -> do
     constantExistsOrError cconst
   constmap <- gets msConstants ;
-  --c1 <- getConstant c1 ;
-  --c2 <- getConstant c2 ;
-  addQueryResult query $ equivalenceExpr
-    (canonicalizeExpr constmap (EConstant c1))
-    (canonicalizeExpr constmap (EConstant c2))
+  let (_, result) = (foldl (\(c1,result) c2 ->
+                              let x2 = canonicalizeExpr constmap (EConstant c2) in
+                                (c1, result && equivalenceExpr c1 x2)
+                           )(canonicalizeExpr constmap (EConstant (c1)), True) consts)
+    in
+    addQueryResult query $ result
 
 getConstant :: Constant -> State ModelState (Maybe Knowledge)
 getConstant constant = gets $ Map.lookup constant . msConstants
