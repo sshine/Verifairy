@@ -11,7 +11,10 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
+import Debug.Trace
+import Data.Graph.Inductive
 
+import System.IO.Unsafe (unsafePerformIO)
 --import Data.Graph.Inductive.Graph (mkGraph, LNode, LEdge, OrdGr, DynGraph, empty, Graph)
 --import Data.Graph.Inductive.PatriciaTree
 
@@ -64,7 +67,16 @@ type EvalM a = State ModelState a
 -- TODO: Check if a given variable is fresh
 
 process :: Model -> ModelState
-process model = execState (processM model) emptyModelState
+process model =
+  let m = execState (processM model) emptyModelState
+      () = unsafePerformIO (putStrLn "yo")
+  in
+    let vertices = [] :: [(Node, Int)]
+        edges = []  :: [LEdge Int]
+        g = mkGraph (vertices)
+                    (edges) :: Gr Int Int
+    in
+      m
 
 processM :: Model -> State ModelState ()
 processM Model{..} =

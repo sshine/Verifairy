@@ -19,6 +19,7 @@ import Hedgehog
 import Test.Hspec
 import Test.Hspec.Megaparsec
 import Test.Tasty.Hspec
+import Text.Megaparsec.Error
 
 import Cases
 
