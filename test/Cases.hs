@@ -182,6 +182,46 @@ equivalence3 = $(embedStringFile "data/equivalence3.vp")
 -- TODO we currently can't parse SPLIT()
 equivalence3_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(Constant {constantName = "a"},Private),(Constant {constantName = "b"},Assignment (EPrimitive (CONCAT [EConstant (Constant {constantName = "a"})]) HasntQuestionMark)),(Constant {constantName = "c"},Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "b"})]) HasntQuestionMark)),(Constant {constantName = "d"},Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "a"})]) HasntQuestionMark))]}),ModelQueries [Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "a"},Constant {constantName = "b"}]}, queryOptions = Nothing},Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "c"},Constant {constantName = "d"}]}, queryOptions = Nothing}]]}
 
+equivalence4 :: Text
+equivalence4 = $(embedStringFile "data/equivalence4.vp")
+equivalence4_ast = Model {modelAttacker = Active, modelParts = [ModelPrincipal (Principal {principalName = "F", principalKnows = [(Constant {constantName = "k1"},Generates),(Constant {constantName = "k2"},Generates),(Constant {constantName = "m1"},Generates),(Constant {constantName = "enc_m1"},Assignment (EPrimitive (ENC (EConstant (Constant {constantName = "k1"})) (EConstant (Constant {constantName = "m1"}))) HasntQuestionMark)),(Constant {constantName = "dec_m1"},Assignment (EPrimitive (DEC (EConstant (Constant {constantName = "k1"})) (EConstant (Constant {constantName = "enc_m1"}))) HasntQuestionMark)),(Constant {constantName = "aead_enc_m1"},Assignment (EPrimitive (AEAD_ENC (EConstant (Constant {constantName = "k1"})) (EConstant (Constant {constantName = "m1"})) (EConstant (Constant {constantName = "nil"}))) HasntQuestionMark)),(Constant {constantName = "aead_dec_m1"},Assignment (EPrimitive (AEAD_DEC (EConstant (Constant {constantName = "k1"})) (EConstant (Constant {constantName = "aead_enc_m1"})) (EConstant (Constant {constantName = "nil"}))) HasntQuestionMark)),(Constant {constantName = "pk1"},Assignment (G (EConstant (Constant {constantName = "k1"})))),(Constant {constantName = "enc_pk1"},Assignment (EPrimitive (ENC (EConstant (Constant {constantName = "k1"})) (EConstant (Constant {constantName = "pk1"}))) HasntQuestionMark)),(Constant {constantName = "dec_pk1"},Assignment (EPrimitive (DEC (EConstant (Constant {constantName = "k1"})) (EConstant (Constant {constantName = "enc_pk1"}))) HasntQuestionMark)),(Constant {constantName = "G_dec_m1"},Assignment (G (EConstant (Constant {constantName = "dec_m1"})))),(Constant {constantName = "G_aead_dec_m1"},Assignment (G (EConstant (Constant {constantName = "aead_dec_m1"})))),(Constant {constantName = "pk2"},Assignment (G (EConstant (Constant {constantName = "m1"}))))]}),ModelQueries [Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "dec_m1"},Constant {constantName = "m1"}]}, queryOptions = Nothing},Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "aead_dec_m1"},Constant {constantName = "m1"}]}, queryOptions = Nothing},Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "pk1"},Constant {constantName = "dec_pk1"}]}, queryOptions = Nothing},Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "pk2"},Constant {constantName = "G_dec_m1"}]}, queryOptions = Nothing},Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "pk2"},Constant {constantName = "G_aead_dec_m1"}]}, queryOptions = Nothing},Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "G_dec_m1"},Constant {constantName = "G_aead_dec_m1"}]}, queryOptions = Nothing}]]}
+
+equivalence5 :: Text
+equivalence5 = $(embedStringFile "data/equivalence5.vp")
+equivalence5_ast = Model {
+  modelAttacker = Active,
+  modelParts = [
+      ModelPrincipal (
+          Principal {
+              principalName = "F",
+              principalKnows = [
+                  (Constant {constantName = "shared_secret"},Private),
+                  (Constant {constantName = "pdk_a"},Assignment (EPrimitive (HKDF (EConstant (Constant {constantName = "nil"})) (EConstant (Constant {constantName = "shared_secret"})) (EConstant (Constant {constantName = "nil"}))) HasntQuestionMark)),
+                  (Constant {constantName = "pdk_b"},Assignment (EPrimitive (HKDF (EConstant (Constant {constantName = "nil"})) (EConstant (Constant {constantName = "shared_secret"})) (EConstant (Constant {constantName = "nil"}))) HasntQuestionMark)),
+                  (Constant {constantName = "a_msg"},Generates),
+                  (Constant {constantName = "a_dh1_sk"},Generates),
+                  (Constant {constantName = "b_dh1_sk"},Generates),
+                  (Constant {constantName = "b_msg"},Private),
+                  (Constant {constantName = "a_dh1_pk"},Assignment (G (EConstant (Constant {constantName = "a_dh1_sk"})))),
+                  (Constant {constantName = "a_t1_alpha"},Assignment (EPrimitive (ENC (EConstant (Constant {constantName = "pdk_a"})) (EConstant (Constant {constantName = "a_dh1_pk"}))) HasntQuestionMark)),
+                  (Constant {constantName = "a_dh1_pk_b"},Assignment (EPrimitive (DEC (EConstant (Constant {constantName = "pdk_b"})) (EConstant (Constant {constantName = "a_t1_alpha"}))) HasntQuestionMark)),
+                  (Constant {constantName = "b_dh1_pk"},Assignment (G (EConstant (Constant {constantName = "b_dh1_sk"})))),
+                  (Constant {constantName = "b_t1_alpha"},Assignment (EPrimitive (ENC (EConstant (Constant {constantName = "pdk_b"})) (EConstant (Constant {constantName = "b_dh1_pk"}))) HasntQuestionMark)),
+                  (Constant {constantName = "b_dh1_pk_a"},Assignment (EPrimitive (DEC (EConstant (Constant {constantName = "pdk_a"})) (EConstant (Constant {constantName = "b_t1_alpha"}))) HasntQuestionMark)),
+                  (Constant {constantName = "dh1_ss_b"},Assignment ((:^:) (Constant {constantName = "a_dh1_pk_b"}) (EConstant (Constant {constantName = "b_dh1_sk"})))),
+                  (Constant {constantName = "dh1_ss_a"},Assignment ((:^:) (Constant {constantName = "b_dh1_pk_a"}) (EConstant (Constant {constantName = "a_dh1_sk"})))),
+                  (Constant {constantName = "dh1_ss_ab"},Assignment ((:^:) (Constant {constantName = "a_dh1_pk"}) (EConstant (Constant {constantName = "b_dh1_sk"})))),
+                  (Constant {constantName = "dh1_ss_ba"},Assignment ((:^:) (Constant {constantName = "b_dh1_pk"}) (EConstant (Constant {constantName = "a_dh1_sk"}))))]}),
+        ModelQueries [
+          Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "a_dh1_pk"},Constant {constantName = "a_dh1_pk_b"}]}, queryOptions = Nothing},
+          Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "b_dh1_pk"},Constant {constantName = "b_dh1_pk_a"}]}, queryOptions = Nothing},
+          Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "dh1_ss_a"},Constant {constantName = "dh1_ss_b"}]}, queryOptions = Nothing},
+          Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "dh1_ss_ab"},Constant {constantName = "dh1_ss_a"}]}, queryOptions = Nothing},
+          Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "dh1_ss_ab"},Constant {constantName = "dh1_ss_b"}]}, queryOptions = Nothing},
+          Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "dh1_ss_ba"},Constant {constantName = "dh1_ss_a"}]}, queryOptions = Nothing},
+          Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "dh1_ss_ba"},Constant {constantName = "dh1_ss_b"}]}, queryOptions = Nothing},
+          Query {queryKind = EquivalenceQuery {equivalenceConstants = [Constant {constantName = "dh1_ss_ab"},Constant {constantName = "dh1_ss_ba"}]}, queryOptions = Nothing}]]}
+
 abknows :: Text
 abknows = $(embedStringFile "data/abknows.vp")
 

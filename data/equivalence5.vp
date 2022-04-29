@@ -1,0 +1,32 @@
+attacker[active]
+
+principal F[
+  knows private shared_secret
+  pdk_a = HKDF(nil, shared_secret, nil)
+  pdk_b = HKDF(nil, shared_secret, nil)
+  generates a_msg, a_dh1_sk, b_dh1_sk
+  knows private b_msg
+
+  a_dh1_pk = G^a_dh1_sk
+  a_t1_alpha = ENC(pdk_a, a_dh1_pk)
+  a_dh1_pk_b = DEC(pdk_b, a_t1_alpha)
+
+  b_dh1_pk = G^b_dh1_sk
+  b_t1_alpha = ENC(pdk_b, b_dh1_pk)
+  b_dh1_pk_a = DEC(pdk_a, b_t1_alpha)
+  
+  dh1_ss_b = a_dh1_pk_b ^ b_dh1_sk // X25519 DH
+  dh1_ss_a = b_dh1_pk_a ^ a_dh1_sk // X25519 DH
+  dh1_ss_ab = a_dh1_pk ^ b_dh1_sk
+  dh1_ss_ba = b_dh1_pk ^ a_dh1_sk
+]
+queries [
+  equivalence? a_dh1_pk, a_dh1_pk_b
+  equivalence? b_dh1_pk, b_dh1_pk_a
+  equivalence? dh1_ss_a, dh1_ss_b
+  equivalence? dh1_ss_ab, dh1_ss_a
+  equivalence? dh1_ss_ab, dh1_ss_b
+  equivalence? dh1_ss_ba, dh1_ss_a
+  equivalence? dh1_ss_ba, dh1_ss_b
+  equivalence? dh1_ss_ab, dh1_ss_ba
+]

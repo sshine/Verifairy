@@ -1,0 +1,29 @@
+attacker[active]
+
+principal F[
+  generates k1, k2
+  generates m1
+  enc_m1 = ENC(k1, m1)
+  dec_m1 = DEC(k1, enc_m1)
+  // equivalence? dec_m1, m1
+  aead_enc_m1 = AEAD_ENC(k1, m1, nil)
+  aead_dec_m1 = AEAD_DEC(k1, aead_enc_m1, nil)
+  // equivalence? aead_dec_m1, m1
+  pk1 = G^k1
+  enc_pk1 = ENC(k1, pk1)
+  dec_pk1 = DEC(k1, enc_pk1)
+  // equivalence? pk1, dec_pk1
+  G_dec_m1 = G^dec_m1
+  G_aead_dec_m1 = G^aead_dec_m1
+  pk2 = G^m1
+  // equivalence? pk2, G_dec_m1, G_aead_dec_m1
+]
+queries [
+  // these should all hold:
+  equivalence? dec_m1, m1
+  equivalence? aead_dec_m1, m1
+  equivalence? pk1, dec_pk1
+  equivalence? pk2, G_dec_m1
+  equivalence? pk2, G_aead_dec_m1
+  equivalence? G_dec_m1, G_aead_dec_m1
+]

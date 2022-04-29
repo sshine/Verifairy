@@ -121,6 +121,12 @@ spec_parsePrincipal = do
     it "parses data/equivalence3.vp" $
       parseModel equivalence3 `shouldParse` equivalence3_ast
 
+    it "parses data/equivalence4.vp" $
+      parseModel equivalence4 `shouldParse` equivalence4_ast
+
+    it "parses data/equivalence5.vp" $
+      parseModel equivalence5 `shouldParse` equivalence5_ast
+
     it "parses data/equations2.vp" $
       parseModel equations2 `shouldParse` equations2_ast
 

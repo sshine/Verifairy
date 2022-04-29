@@ -1,0 +1,5 @@
+attacker[passive]
+principal A[ knows private a]
+// above is a valid model
+// below is not:
+confidentiality? a

@@ -250,24 +250,66 @@ quicksort (p:xs) = (quicksort lesser) ++ [p] ++ (quicksort greater)
     where
         lesser  = filter (< p) xs
         greater = filter (>= p) xs
+-- equationToList is a sorted list of the expressions that constitute
+-- the terms of an expression.
+-- The idea is that G^x^y^z should give [x,y,z]
+--              and G^z^y^x should give [x,y,z]
+-- TODO this function relies on the assumption that
+-- each equation contains exactly one G that sits at the base
+-- of all the equations; we should typecheck that.
 equationToList :: [CanonExpr] -> CanonExpr -> [CanonExpr]
 equationToList acc c =
-  case c of
-    ((:^^:) const b) ->  equationToList (equationToList [] const ++acc) b
-    (CG a) -> equationToList acc a
-    _ -> quicksort acc
+  case simplifyExpr c of
+    -- special case: G^base^b: we strip the base TODO this is no good
+    -- TODO because it may be DEC(x,ENC(x, G base)) which is also ok.
+    --((:^^:) (CG base) (CG b)) -> equationToList (base:acc) b
+    --((:^^:) base (CG b)) ->
+      --quicksort (base : (map CG (equationToList [] b)) ++ acc)
+    --((:^^:) (CG base) b) -> equationToList (base:acc) b
+    -- x^y: recurse to see if x or y are themselves :^^:
+    ((:^^:) lhs rhs) ->
+      equationToList (equationToList acc lhs) rhs
+    CG term | acc == [] ->
+      quicksort (term:acc)
+    CG term -> -- here we should lift the first term to G^:
+      equationToList ((CConstant (Constant {constantName = "G"}) CPublic):acc) term
+    -- term was not :^^: so it's just a term:
+    term -> quicksort (term:acc)
+
+simplifyExpr :: CanonExpr -> CanonExpr
+simplifyExpr e =
+  -- TODO this function throws away the HasQuestionMark stuff
+  case e of
+    -- DEC(k, ENC(k, payload)) = payload
+    CPrimitive (DEC key encrypted) hasq -> do
+      let simple_enc = simplifyExpr encrypted
+          simple_key = simplifyExpr key
+      case simple_enc of
+        -- remove the key:
+        CPrimitive (ENC simple_key' payload) _
+          | equivalenceExpr simple_key simple_key' -> simplifyExpr payload
+        _ -> CPrimitive (DEC simple_key simple_enc) hasq
+    CPrimitive (AEAD_DEC key encrypted ad) hasq -> do
+      let simple_enc = simplifyExpr encrypted
+          simple_key = simplifyExpr key
+          simple_ad  = simplifyExpr ad
+      case simple_enc of
+        -- remove the dec(enc()) if key and ad match:
+        CPrimitive (AEAD_ENC simple_key' payload simple_ad') _
+          | equivalenceExpr simple_key simple_key' && equivalenceExpr simple_ad simple_ad' -> simplifyExpr payload
+        _ -> CPrimitive (AEAD_DEC simple_key simple_enc simple_ad) hasq
+    e -> e
 
 equivalenceExpr' :: CanonExpr -> CanonExpr -> Bool
 equivalenceExpr' o_e1 o_e2 =
-  case (o_e1, o_e2) of
+  -- TODO it might be nice to memoize the results of these comparisons
+  -- in a set in the future
+  case (simplifyExpr o_e1, simplifyExpr o_e2) of
     -- Equations are kind of tricky:
     -- it needs to hold that G^a^x^y^z === G^z^a^y^x etc,
     -- the approach taken here is to sort the expressions (using Ord or whatever)
     -- and then compare them term by term:
     --
-    ((:^^:) a b, (:^^:) a' b')
-      | equivalenceExprs (equationToList [] ((:^^:) a  b ))
-                         (equationToList [] ((:^^:) a' b')) -> True
     --
     (CConstant c _, CConstant c' _) -> c == c'
     -- Below we have some transformations, they are all guarded to avoid shorting
@@ -284,9 +326,13 @@ equivalenceExpr' o_e1 o_e2 =
     --
     (CPrimitive p _, CPrimitive p' _) -> equivalencePrimitive p p'
     (CG e, CG e') -> equivalenceExpr e e'
-     -- default to False, TODO be careful with this as it may lead to
-     -- incorrect results if we are missing transformations:
-    _ -> False
+    (a@((:^^:) {}), b@((:^^:) {})) ->
+      equivalenceExprs
+        (equationToList [] a)
+        (equationToList [] b)
+    (CPrimitive {}, _) -> False
+    (CConstant {}, _ ) -> False
+    (CG {}, _) -> False
 
 equivalenceExpr :: CanonExpr -> CanonExpr -> Bool
 equivalenceExpr e1 e2 = -- TODO cannot be bothered to do transformations both ways
