@@ -37,19 +37,19 @@ tests:
       - hspec
       - hspec-megaparsec
       - file-embed
-  propertytest:
-    main: PropertyTest.hs
-    source-dirs: test
-    dependencies:
-      - verifhal9k
-      - tasty
-      - tasty-discover
-      - tasty-hspec
-      - tasty-hedgehog
-      - hedgehog
-      - hspec
-      - hspec-megaparsec
-      - file-embed
+#  propertytest:
+#    main: PropertyTest.hs
+#    source-dirs: test
+#    dependencies:
+#      - verifhal9k
+#      - tasty
+#      - tasty-discover
+#      - tasty-hspec
+#      - tasty-hedgehog
+#      - hedgehog
+#      - hspec
+#      - hspec-megaparsec
+#      - file-embed
 
 executables:
   verifairy:

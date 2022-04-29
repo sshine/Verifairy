@@ -58,38 +58,6 @@ executable verifairy
     , verifhal9k
   default-language: Haskell2010
 
-test-suite propertytest
-  type: exitcode-stdio-1.0
-  main-is: PropertyTest.hs
-  other-modules:
-      Cases
-      CheckTest
-      ParserTest
-      Paths_verifhal9k
-  hs-source-dirs:
-      test
-  default-extensions:
-      OverloadedStrings
-      RecordWildCards
-  build-depends:
-      base
-    , containers
-    , fgl
-    , file-embed
-    , hedgehog
-    , hspec
-    , hspec-megaparsec
-    , megaparsec
-    , mtl
-    , optparse-generic
-    , tasty
-    , tasty-discover
-    , tasty-hedgehog
-    , tasty-hspec
-    , text
-    , verifhal9k
-  default-language: Haskell2010
-
 test-suite test
   type: exitcode-stdio-1.0
   main-is: test.hs
@@ -97,7 +65,6 @@ test-suite test
       Cases
       CheckTest
       ParserTest
-      PropertyTest
       Paths_verifhal9k
   hs-source-dirs:
       test
