@@ -122,3 +122,14 @@ spec_parsePrincipal = do
 
     it "parses data/equations2.vp" $
       parseModel equations2 `shouldParse` equations2_ast
+
+    it "parses data/confidentiality1.vp" $
+      parseModel confidentiality1 `shouldParse` confidentiality1_ast
+
+    it "parses data/confidentiality2.vp" $
+      parseModel confidentiality2 `shouldParse` confidentiality2_ast
+
+    --it "parses data/extraneous.vp" $
+      -- TODO should NOT parse this; should be an error
+      --  "a" `shouldBe` "a"
+--      parseModel confidentiality2 `shouldBe` (Left (ParseErrorBundle(ParseError 1 2)))

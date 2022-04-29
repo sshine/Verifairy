@@ -29,7 +29,7 @@ parseModelPart :: Text -> Either (ParseErrorBundle Text Void) ModelPart
 parseModelPart = parse' modelPart
 
 parseModel :: Text -> Either (ParseErrorBundle Text Void) Model
-parseModel = parse' (space *> model)
+parseModel = parse' (space *> model <* space <* eof)
 
 model :: Parser Model
 model = do
