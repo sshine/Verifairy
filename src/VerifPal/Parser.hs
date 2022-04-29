@@ -6,7 +6,7 @@ module VerifPal.Parser where
 import Control.Monad (void)
 import Data.Char (isLetter, isSpace, isNumber)
 import Data.Functor (($>))
-import Data.Map (Map)
+import Data.Map ()
 import qualified Data.Map as Map
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -64,7 +64,7 @@ principal = do
 message :: Parser Message
 message = do
   messageSender <- name
-  symbol "->"
+  choice [ symbol "->" , symbol "→"] -- TODO: document that we support this
   messageReceiver <- name
   symbol ":"
   messageConstants <- messageConstant `sepBy1` comma
@@ -150,7 +150,12 @@ knowledge = choice [ knows, generates, leaks, assignment ]
 
     assignment :: Parser [(Constant, Knowledge)]
     assignment = do
-      c <- constant
+      -- TODO what to do about split(), shamir_split() etc?
+      -- it would be nice if we could keep track of arity of both input
+      -- and output parameters. For now we read/parse the list of assigned
+      -- variables and throw them away:
+      cs <- constant `sepBy1` comma
+      let c = case cs of c:_ -> c
       symbol "="
       e <- expr
       pure [(c, Assignment e)]
@@ -189,6 +194,7 @@ expr = choice [ g, primitive, constHat ]
 
     prim1 :: Text -> (Expr -> Primitive) -> Parser Expr
     prim1 primName primOp = do
+      symbol primName
       prim <- parens (primOp <$> expr)
       question <- option HasntQuestionMark (symbol "?" $> HasQuestionMark)
       pure (EPrimitive prim question)
@@ -285,8 +291,8 @@ space' = void $ takeWhileP (Just "any whitespace") isSpace
 space1' = void $ takeWhile1P (Just "at least one whitespace") isSpace
 
 comment1' = void . some $ do
-  chunk "//"
-  takeWhileP (Just "comment") (not . isNewLine)
+  _ <- chunk "//"
+  _ <- takeWhileP (Just "comment") (not . isNewLine)
   space'
   where
     isNewLine = (== '\n')

@@ -80,17 +80,17 @@ argsHandler Args { backend = backend
     Right model -> do
       Text.hPutStrLn stderr ("parsing file " <> Text.pack srcFile <> "...")
       let ms = VerifPal.Check.process model
-      case msErrors ms of
-        [] -> putStrLn "No errors"
-        errs -> do
-          -- TODO should make a Diagnostic here for each of these:
-          traverse_ print (msErrors ms)
-          exitFailure
+      -- TODO should make a Diagnostic here for each of these:
+      traverse_ print (msErrors ms)
+      --
       msQueryResults ms & map myAnnotate & for_ $ \annotated -> do
           putDoc annotated
           putStrLn ""
-        -- (annotate Red (pretty $ show res))
-      --Text.writeFile outFilePath outText
+      -- Bail out if we have errors or failing queries:
+      when (msErrors ms /= [])
+        exitFailure
+      when (any (not.snd) $ msQueryResults ms)
+        exitFailure
 
 runArgsParser :: IO Args
 runArgsParser = customExecParser (prefs showHelpOnError) argsParserInfo

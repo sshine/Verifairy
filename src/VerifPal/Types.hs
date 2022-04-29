@@ -5,10 +5,10 @@
 
 module VerifPal.Types where
 
-import Data.Set (Set)
-import Data.List.NonEmpty (NonEmpty)
-import Data.Map.Strict (Map)
-import qualified Data.Map.Strict as Map
+import Data.Set()
+import Data.List.NonEmpty()
+import Data.Map.Strict ()
+import qualified Data.Map.Strict()
 import Data.Text (Text)
 
 data Model = Model

@@ -1,0 +1,9 @@
+attacker[passive]
+
+principal A [
+  generates a
+  b = a
+  _ = b
+  _ = HASH(a)
+  c = b
+]

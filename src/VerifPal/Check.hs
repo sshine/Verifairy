@@ -106,15 +106,18 @@ processKnowledge principalName (constant, knowledge) = do
     (Nothing, Password) -> addConstant principalName constant knowledge
     (Nothing, Generates) -> addConstant principalName constant knowledge
     (Nothing, Assignment exp) ->
+      if constant == Constant{constantName="_"}
+      then pure ()
       -- For assignments we check that all the referenced constants exist
       -- in the knowledge map associated with the current principal.
       -- The ambition is to catch both references to undefined constants (typos)
       -- and cases where a reference is made to a constant that exists, but it isn't
       -- known by (principalName):
-      foldConstantsInExpr (addConstant principalName constant knowledge)
-      exp (\c st -> do
-         st >>= pure (hasPrincipalConstantOrError principalName c "assignment to unbound constant")
-      )
+      else
+        foldConstantsInExpr (addConstant principalName constant knowledge)
+        exp (\c st -> do
+                st >>= pure (hasPrincipalConstantOrError principalName c "assignment to unbound constant")
+            )
     (Just _, Generates) -> addError (OverlappingConstant constant "can't generate the same thing twice")
     (Just _, Assignment _) -> addError (OverlappingConstant constant "can't assign to the same name twice")
     (_, Leaks) ->
@@ -277,6 +280,7 @@ equivalenceExpr :: CanonExpr -> CanonExpr -> Bool
 equivalenceExpr e1 e2 = -- TODO cannot be bothered to do transformations both ways
   equivalenceExpr' e1 e2 || equivalenceExpr' e2 e1
 
+equivalenceExprs :: [CanonExpr] -> [CanonExpr] -> Bool
 equivalenceExprs [] [] = True
 equivalenceExprs (x:xs) (y:ys) = equivalenceExpr x y && equivalenceExprs xs ys
 equivalenceExprs _ _ = False
