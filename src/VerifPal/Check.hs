@@ -291,15 +291,71 @@ equivalencePrimitive p1 p2 = do
   let eqExprs [] [] = True
       eqExprs (x:xs) (y:ys) = eqExpr x y && eqExprs xs ys
   case (p1, p2) of
-    -- simple equivalence: equivalent constructors, need to
-    -- compare the leaf exprs:
-    (ASSERT e1 e2, ASSERT e'1 e'2) -> eqExpr e1 e'1 && eqExpr e2 e'2
-    (CONCAT exps, CONCAT exps') -> eqExprs exps exps'
-    (SPLIT e, SPLIT e') -> eqExpr e e'
-    (HASH e, HASH e') -> eqExprs e e'
+    -- TODO is this the right place for this optimization?
+    -- NOTE: we do not have any when-guards in here; this way we can
+    -- ensure we always progress (by stripping a constructor) and don't
+    -- end up in endless loops.
+    -- we can however do simple transformations as long as we remove
+    -- constructors:
     (CONCAT e, SPLIT (CPrimitive (CONCAT e') _TODO)) -> eqExprs e e'
     (SPLIT (CPrimitive (CONCAT e') _TODO), CONCAT e) -> eqExprs e e'
+    -- simple equivalence: equivalent constructors, need to
+    -- compare the leaf exprs:
+    (ASSERT e1 e2, ASSERT e'1 e'2) ->
+      eqExpr e1 e'1 && eqExpr e2 e'2
+    (ASSERT {}, _) -> False
+    (CONCAT e1, CONCAT e'1) -> eqExprs e1 e'1
+    (CONCAT {}, _) -> False
+    (SPLIT e, SPLIT e') -> eqExpr e e'
+    (SPLIT {}, _) -> False
+    (HASH e, HASH e') -> eqExprs e e'
+    (HASH {}, _) -> False
+    (MAC e1 e2, MAC e'1 e'2) -> eqExpr e1 e'1 && eqExpr e2 e'2
+    (MAC {}, _) -> False
+    (HKDF e1 e2 e3, HKDF e'1 e'2 e'3) ->
+      eqExpr e1 e'1 && eqExpr e2 e'2 && eqExpr e3 e'3
+    (HKDF {}, _) -> False
+    (PW_HASH e, PW_HASH e') -> eqExprs e e'
+    (PW_HASH {}, _) -> False
     (ENC e1 e2, ENC e'1 e'2) -> eqExpr e1 e'1 && eqExpr e2 e'2
+    (ENC {}, _) -> False
+    (DEC e1 e2, DEC e'1 e'2) -> eqExpr e1 e'1 && eqExpr e2 e'2
+    (DEC {}, _) -> False
+    (AEAD_ENC e1 e2 e3, AEAD_ENC e'1 e'2 e'3) ->
+      eqExpr e1 e'1 && eqExpr e2 e'2 && eqExpr e3 e'3
+    (AEAD_ENC {}, _) -> False
+    (AEAD_DEC e1 e2 e3, AEAD_DEC e'1 e'2 e'3) ->
+      eqExpr e1 e'1 && eqExpr e2 e'2 && eqExpr e3 e'3
+    (AEAD_DEC {}, _) -> False
+    (PKE_ENC e1 e2, PKE_ENC e'1 e'2) -> eqExpr e1 e'1 && eqExpr e2 e'2
+    (PKE_ENC {}, _) -> False
+    (PKE_DEC e1 e2, PKE_DEC e'1 e'2) -> eqExpr e1 e'1 && eqExpr e2 e'2
+    (PKE_DEC {}, _) -> False
+    (SIGN e1 e2, SIGN e'1 e'2) -> eqExpr e1 e'1 && eqExpr e2 e'2
+    (SIGN {}, _) -> False
+    (SIGNVERIF e1 e2 e3, SIGNVERIF e'1 e'2 e'3) ->
+      eqExpr e1 e'1 && eqExpr e2 e'2 && eqExpr e3 e'3
+    (SIGNVERIF {}, _) -> False
+    (RINGSIGN e1 e2 e3 e4, RINGSIGN e'1 e'2 e'3 e'4) ->
+      eqExpr e1 e'1 && eqExpr e2 e'2 && eqExpr e3 e'3 && eqExpr e4 e'4
+    (RINGSIGN {}, _) -> False
+    (RINGSIGNVERIF e1 e2 e3 e4 e5, RINGSIGNVERIF e'1 e'2 e'3 e'4 e'5) ->
+      eqExpr e1 e'1 && eqExpr e2 e'2 && eqExpr e3 e'3 && eqExpr e4 e'4 && eqExpr e5 e'5
+    (RINGSIGNVERIF {}, _) -> False
+    (BLIND e1 e2, BLIND e'1 e'2) -> eqExpr e1 e'1 && eqExpr e2 e'2
+    (BLIND {}, _) -> False
+    (UNBLIND e1 e2 e3, UNBLIND e'1 e'2 e'3) ->
+      eqExpr e1 e'1 && eqExpr e2 e'2 && eqExpr e3 e'3
+    (UNBLIND {}, _) -> False
+    (SHAMIR_SPLIT e, SHAMIR_SPLIT e') -> eqExpr e e'
+    (SHAMIR_SPLIT {}, _) -> False
+    (SHAMIR_JOIN e1 e2 e3, SHAMIR_JOIN e'1 e'2 e'3) ->
+      -- argument order is irrelevant here:
+      let a = quicksort [e1, e2, e3]
+          b = quicksort [e'1, e'2, e'3]
+      in
+        eqExprs a b
+    (SHAMIR_JOIN {}, _) -> False
 
 canonicalizePrimitive :: Map Constant Knowledge -> Primitive -> PrimitiveP CanonExpr
 canonicalizePrimitive m old =
