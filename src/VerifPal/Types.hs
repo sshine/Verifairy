@@ -87,9 +87,9 @@ data Knowledge
   deriving (Ord, Show, Eq)
 -- Primitives:
 --  * Decompose: Given ENC(k, m) and k, reveal m.
---  * Recompose: Given a, b, reveal x if a, b, _ = SHAMIR_SPLIT(x)
+--  * Recompose: Given a, b, reveal x if a, b = SHAMIR_SPLIT(x)
 --  * Rewrite: Given DEC(k, ENC(k, m)), rewrite this to m.
---  * Rebuild: Given SHAMIR_JOIN(a, b) where a, b, c = SHAMIR_SPLIT(x),
+--  * Rebuild: Given SHAMIR_JOIN(a, b) where a, b = SHAMIR_SPLIT(x),
 --             rewrite SHAMIR_JOIN(a, b) to x.
 
 data Expr 
@@ -131,7 +131,7 @@ data PrimitiveP expr
 
     -- Secret sharing primitives
   | SHAMIR_SPLIT expr  -- SHAMIR_SPLIT(k): s1, s2, s3
-  | SHAMIR_JOIN expr expr expr -- SHAMIR_JOIN(sa, sb): k
+  | SHAMIR_JOIN expr expr -- SHAMIR_JOIN(sa, sb): k
   deriving (Eq, Ord, Show)
 
 -- Checked Primitive:  if you add a question mark (?) after one of these

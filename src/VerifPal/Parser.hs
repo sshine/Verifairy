@@ -189,7 +189,7 @@ expr = choice [ g, primitive, constHat ]
       , prim2 "BLIND" BLIND
       , prim3 "UNBLIND" UNBLIND
       , prim1 "SHAMIR_SPLIT" SHAMIR_SPLIT
-      , prim3 "SHAMIR_JOIN" SHAMIR_JOIN
+      , prim2 "SHAMIR_JOIN" SHAMIR_JOIN
       ]
 
     prim1 :: Text -> (Expr -> Primitive) -> Parser Expr

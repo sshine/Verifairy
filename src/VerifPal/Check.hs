@@ -407,10 +407,10 @@ equivalencePrimitive p1 p2 = do
     (UNBLIND {}, _) -> False
     (SHAMIR_SPLIT e, SHAMIR_SPLIT e') -> eqExpr e e'
     (SHAMIR_SPLIT {}, _) -> False
-    (SHAMIR_JOIN e1 e2 e3, SHAMIR_JOIN e'1 e'2 e'3) ->
+    (SHAMIR_JOIN e1 e2, SHAMIR_JOIN e'1 e'2) ->
       -- argument order is irrelevant here:
-      let a = quicksort [e1, e2, e3]
-          b = quicksort [e'1, e'2, e'3]
+      let a = quicksort [ e1,  e2]
+          b = quicksort [e'1, e'2]
       in
         eqExprs a b
     (SHAMIR_JOIN {}, _) -> False
@@ -473,7 +473,7 @@ mapPrimitiveP prim f =
     BLIND e1 e2 -> BLIND (f e1) (f e2)
     UNBLIND e1 e2 e3 -> UNBLIND (f e1) (f e2) (f e3)
     SHAMIR_SPLIT e1 -> SHAMIR_SPLIT (f e1)
-    SHAMIR_JOIN e1 e2 e3 -> SHAMIR_JOIN (f e1) (f e2) (f e3)
+    SHAMIR_JOIN e1 e2 -> SHAMIR_JOIN (f e1) (f e2)
 
 -- note that this ONLY folds over the constants in an expression,
 -- NOT the knowledge maps, so it will not "jump" across maps of knowledge
@@ -507,7 +507,7 @@ foldConstantsInExpr acc o_exp f =
         BLIND e1 e2 -> dolist [e1, e2]
         UNBLIND e1 e2 e3 -> dolist [e1, e2, e3]
         SHAMIR_SPLIT e1 -> dolist [e1]
-        SHAMIR_JOIN e1 e2 e3 -> dolist [e1, e2, e3]
+        SHAMIR_JOIN e1 e2 -> dolist [e1, e2]
 
 -- note that this can call f with the same constant
 -- several times:
