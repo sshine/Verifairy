@@ -277,8 +277,7 @@ equationToList acc c =
     term -> quicksort (term:acc)
 
 simplifyExpr :: CanonExpr -> CanonExpr
-simplifyExpr e =
-  -- TODO this function throws away the HasQuestionMark stuff
+simplifyExpr e = do
   case e of
     -- DEC(k, ENC(k, payload)) = payload
     CPrimitive (DEC key encrypted) hasq -> do
@@ -298,6 +297,7 @@ simplifyExpr e =
         CPrimitive (AEAD_ENC simple_key' payload simple_ad') _
           | equivalenceExpr simple_key simple_key' && equivalenceExpr simple_ad simple_ad' -> simplifyExpr payload
         _ -> CPrimitive (AEAD_DEC simple_key simple_enc simple_ad) hasq
+    -- TODO may need: CPrimitive ep hasq -> CPrimitive (mapPrimitiveP ep simplifyExpr) hasq
     e -> e
 
 equivalenceExpr' :: CanonExpr -> CanonExpr -> Bool
@@ -321,6 +321,7 @@ equivalenceExpr' o_e1 o_e2 =
     (e, CPrimitive (CONCAT [e']) _) | equivalenceExpr e e' -> True
     -- Decryption of encrypted plaintext is equivalent to plaintext.
     -- (encrypted) may not immediately be an ENC, so we need to recurse:
+    -- TODO this is not covered by simplifyExpr ? commenting out the part below fails the equivalence3.vp test:
     (e, CPrimitive (DEC key encrypted) _)
       | equivalenceExpr encrypted (CPrimitive (ENC key e) HasntQuestionMark) -> True
     --
