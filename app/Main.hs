@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE  MultiParamTypeClasses #-}
 module Main where
@@ -51,6 +50,11 @@ instance HasHints Void Text where
 prettifyQuery :: QueryKind -> String
 prettifyQuery (FreshnessQuery const) =
   "freshness? " ++ (Text.unpack $ constantName const)
+prettifyQuery (EquivalenceQuery consts) =
+  "equivalence? " ++ (
+  map(\const ->
+         constantName const
+     ) consts & Text.intercalate ", " & Text.unpack)
 prettifyQuery k = show k
 
 myAnnotate :: (Query, Bool) -> Doc AnsiStyle
