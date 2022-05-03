@@ -116,7 +116,6 @@ spec_equations = do
         a = mkc "a"
         b = mkc "b"
         c = mkc "c"
-        g = mkc "G"
     it "equationToList [] = []" $ do
       equationToList [] a `shouldBe` [a]
     it "equationsToList G^a = [G a]" $ do
@@ -126,8 +125,13 @@ spec_equations = do
     it "equationsToList (G^b)^a = [a,b]" $ do
       equationToList [] ((:^^:) (CG b) a) `shouldBe` [a,b]
     it "equationsToList (G^b)^(G^a) = [g,a,b]" $ do
-      equationToList [] ((:^^:) (CG b) (CG a)) `shouldNotBe` [a,b]
-      equationToList [] ((:^^:) (CG b) (CG a)) `shouldBe` [g,a,b]
+      let ba = equationToList [] ((:^^:) (CG b) (CG a))
+      ba `shouldNotBe` [a,b]
+      ba `shouldBe` [CG a,b]
+    it "equationsToList G^a^(G^b) /= G^b^(G^a)" $ do
+      let ab = equationToList [] ((:^^:) (CG a) (CG b))
+          ba = equationToList [] ((:^^:) (CG b) (CG a))
+      ab `shouldNotBe` ba
     it "equationsToList G^a^G^b /= G^a^b" $ do
       let lhs = ((:^^:) (CG a) (CG b))
           rhs = ((:^^:) (CG a) b)
@@ -141,9 +145,9 @@ spec_equations = do
     -- TODO should we typecheck that the innermost, leftmost expression
     -- always contains a G ?
     it "equationsToList ((G^c)^b)^(G^a) = [G^a,b,c]" $ do
-      equationToList [] ((:^^:) ((:^^:) (CG c) b) (CG a)) `shouldBe` [g,a,b,c]
+      equationToList [] ((:^^:) ((:^^:) (CG c) b) (CG a)) `shouldBe` [CG a,b,c]
     it "equationsToList ((G^c)^(G^b))^a = [G^b,a,c]" $ do
-      equationToList [] ((:^^:) ((:^^:) (CG c) (CG b)) a) `shouldBe` [g,a,b,c]
+      equationToList [] ((:^^:) ((:^^:) (CG c) (CG b)) a) `shouldBe` [CG b,a,c]
     it "equationsToList ((G^c)^(G^b))^(G^a) /= ((G^c)^b)^(G^a)" $ do
       equationToList [] ((:^^:) ((:^^:) (CG c) (CG b)) a
                         ) `shouldNotBe` equationToList [] (
@@ -152,7 +156,8 @@ spec_equations = do
                         ) `shouldNotBe` equationToList [] (
                          (:^^:) ((:^^:) (CG c) (CG b))     a)
     it "equationsToList ((G^c)^(G^b))^(G^a) = [G^a,G^b,c]" $ do
-      equationToList [] ((:^^:) ((:^^:) (CG c) (CG b)) (CG a)) `shouldBe` [g,g,a,b,c]
+      equationToList [] ((:^^:) ((:^^:) (CG c) (CG b)) (CG a)) `shouldBe` [
+        CG a,CG b,c]
     it "equationsToList (G^b_sk)^a_sk = [a_sk,b_sk]" $ do
       let dh1_ss_a = (:^^:) b_dh1_pk_a  a_dh1_sk
           dh1_ss_b = (:^^:) a_dh1_pk_b  b_dh1_sk

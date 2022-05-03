@@ -269,10 +269,8 @@ equationToList acc c =
     -- x^y: recurse to see if x or y are themselves :^^:
     ((:^^:) lhs rhs) ->
       equationToList (equationToList acc lhs) rhs
-    CG term | acc == [] ->
+    CG term | acc == [] -> -- innermost lhs should be CG (TODO typecheck that)
       quicksort (term:acc)
-    CG term -> -- here we should lift the first term to G^:
-      equationToList ((CConstant (Constant {constantName = "G"}) CPublic):acc) term
     -- term was not :^^: so it's just a term:
     term -> quicksort (term:acc)
 
@@ -331,6 +329,7 @@ equivalenceExpr' o_e1 o_e2 =
       equivalenceExprs
         (equationToList [] a)
         (equationToList [] b)
+    ((:^^:) {}, _) -> False
     (CPrimitive {}, _) -> False
     (CConstant {}, _ ) -> False
     (CG {}, _) -> False
