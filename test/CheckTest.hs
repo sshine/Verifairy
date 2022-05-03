@@ -12,7 +12,8 @@ import Data.Text (Text)
 --import Data.Text.Read (hexadecimal)
 --import Data.Void
 
---import Hedgehog
+import Hedgehog
+import qualified Hedgehog.Gen
 --import Test.Hspec
 --import Test.Hspec.Megaparsec
 import Test.Tasty.Hspec
@@ -312,3 +313,8 @@ spec_equivalence = do
       shouldNotFail modelState
       -- TODO should NOT have: modelState `shouldHaveEquivalence` ["a", "b"]
       modelState `shouldHaveEquivalence` ["gyx", "gxy"]
+
+hprop_yo :: Hedgehog.Property
+hprop_yo =
+  verifiedTermination $ property $ do
+    ['a'] === ['a']

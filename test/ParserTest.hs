@@ -20,8 +20,13 @@ import Test.Hspec
 import Test.Hspec.Megaparsec
 import Test.Tasty.Hspec
 import Text.Megaparsec.Error
-
+import Hedgehog
 import Cases
+
+hprop_yo :: Hedgehog.Property
+hprop_yo =
+  property $ do
+    parseModel "a" === parseModel "a"
 
 spec_parsePrincipal :: Spec
 spec_parsePrincipal = do
