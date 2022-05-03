@@ -14,12 +14,13 @@ import Data.Text (Text)
 
 import Hedgehog
 import qualified Hedgehog.Gen
+import qualified Hedgehog.Range
 --import Test.Hspec
 --import Test.Hspec.Megaparsec
 import Test.Tasty.Hspec
 
 import VerifPal.Types
-import VerifPal.Check (process, ModelState(..), ModelError(..), ProcessingCounter, CanonExpr(..),CanonKnowledge(..), equationToList, equivalenceExpr, quicksort)
+import VerifPal.Check (process, ModelState(..), ModelError(..), ProcessingCounter, CanonExpr(..),CanonKnowledge(..), equationToList, equivalenceExpr, quicksort, simplifyExpr)
 import Data.Map (Map)
 import qualified Data.Map as Map
 
@@ -314,7 +315,98 @@ spec_equivalence = do
       -- TODO should NOT have: modelState `shouldHaveEquivalence` ["a", "b"]
       modelState `shouldHaveEquivalence` ["gyx", "gxy"]
 
-hprop_yo :: Hedgehog.Property
-hprop_yo =
+genKnowledge :: MonadGen m => m CanonKnowledge
+genKnowledge = do
+  Hedgehog.Gen.choice [
+    pure CPrivate,
+    pure CPublic,
+    pure CGenerates,
+    pure CPassword]
+genConstant :: MonadGen m => m CanonExpr
+genConstant = do
+  name <- Hedgehog.Gen.text (Hedgehog.Range.constant 5 10) Hedgehog.Gen.alphaNum
+  knowledge <- genKnowledge
+  pure (CConstant (Constant {constantName = name}) knowledge)
+genEquationLink :: MonadGen m => CanonExpr -> m CanonExpr
+genEquationLink lhs = do
+  Hedgehog.Gen.recursive Hedgehog.Gen.choice [
+    pure lhs
+    ] [
+    do
+      lhs <- genEquationLink lhs
+      rhs <- genCanonExpr
+      rhs <- genEquationLink rhs
+      pure ((:^^:) lhs rhs)
+    ]
+genEquation :: MonadGen m => m CanonExpr
+genEquation = do
+  root <- genCanonExpr
+  let rootx = CG root
+  Hedgehog.Gen.recursive Hedgehog.Gen.choice [
+    pure rootx] [genEquationLink rootx]
+genPrimitiveCanonExpr :: MonadGen m => m (PrimitiveP CanonExpr)
+genPrimitiveCanonExpr = do
+  let arityN = [CONCAT,HASH,PW_HASH]
+  let unary = [SPLIT,SHAMIR_SPLIT]
+  let binary = [ASSERT,MAC,ENC,DEC,PKE_ENC,PKE_DEC,SIGN,BLIND,SHAMIR_JOIN]
+  let arity3 = [HKDF, AEAD_ENC, AEAD_DEC, SIGNVERIF, UNBLIND]
+  let arity4 = [RINGSIGN]
+  let arity5 = [RINGSIGNVERIF]
+  Hedgehog.Gen.recursive Hedgehog.Gen.choice [
+    HASH <$> (\f -> [f]) <$> genConstant -- need at least one non-recursive choice
+                                             ] [
+    Hedgehog.Gen.element arityN <*> Hedgehog.Gen.list (Hedgehog.Range.constant 0 10) genCanonExpr,
+    Hedgehog.Gen.element unary <*> genCanonExpr,
+    Hedgehog.Gen.element binary <*> genCanonExpr <*> genCanonExpr,
+    Hedgehog.Gen.element arity3 <*> genCanonExpr <*> genCanonExpr <*> genCanonExpr,
+    Hedgehog.Gen.element arity4 <*> genCanonExpr <*> genCanonExpr <*> genCanonExpr <*> genCanonExpr,
+    Hedgehog.Gen.element arity5 <*> genCanonExpr <*> genCanonExpr <*> genCanonExpr <*> genCanonExpr <*> genCanonExpr
+    ]
+
+genCPrimitive :: MonadGen m => m CanonExpr
+genCPrimitive = do
+  checked <- Hedgehog.Gen.choice [pure HasQuestionMark, pure HasntQuestionMark]
+  prim <- genPrimitiveCanonExpr
+  pure (CPrimitive prim checked)
+genCanonExpr :: MonadGen m => m CanonExpr
+genCanonExpr = do
+  Hedgehog.Gen.recursive Hedgehog.Gen.choice [genConstant] [genEquation, genCPrimitive]
+
+hprop_simplifyExprEquivalence :: Hedgehog.Property
+hprop_simplifyExprEquivalence =
+  -- simplification doesn't oversimplify, and is transitive:
   verifiedTermination $ property $ do
-    ['a'] === ['a']
+    eq1 <- forAll $ genCanonExpr
+    ( equivalenceExpr (simplifyExpr eq1) eq1 &&
+      equivalenceExpr eq1 (simplifyExpr eq1)) === True
+
+hprop_physicalEquivalence :: Hedgehog.Property
+hprop_physicalEquivalence =
+  -- if they are physicall equivalent then equivalenceExpr should also
+  -- be true. the converse is NOT necessarily true.
+  -- this test detects when equivalenceExpr is too dismissive.
+  verifiedTermination $ property $ do
+    ex1 <- forAll $ genCanonExpr
+    ex2 <- forAll $ genCanonExpr
+    if ex1 == ex2
+      then do equivalenceExpr ex1 ex2 === True
+      else pure ()
+
+hprop_equationsAreEquivalent :: Hedgehog.Property
+hprop_equationsAreEquivalent =
+  verifiedTermination $ property $ do
+    eq1 <- forAll $ genEquation
+    eq2 <- forAll $ genEquation
+    let theyAreEqual = equivalenceExpr eq1 eq2
+        lst1 = equationToList [] eq1
+        lst2 = equationToList [] eq2
+        simpl1 = simplifyExpr eq1
+        simpl2 = simplifyExpr eq2
+    _ <- equivalenceExpr simpl1 simpl2 === theyAreEqual
+    _ <- equivalenceExpr simpl1 eq2 === theyAreEqual
+    _ <- equivalenceExpr eq1 simpl2 === theyAreEqual
+    -- the list should be physically equivalent since we are dealing with
+    -- CanonExpr which should be canonical:
+    (lst1 == lst2) === theyAreEqual
+
+-- TODO would be nice to have a property test where we construct exactly one constant with CGenerates knowledge type and then wrap it in various constructors; finally in a ModelState in order to test that processQuery accurately determines freshness. and of course a ModelState without any fresh stuff to detect false positives.
