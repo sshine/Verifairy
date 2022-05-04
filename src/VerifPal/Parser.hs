@@ -7,12 +7,10 @@ import Control.Monad (void)
 import Data.Char (isLetter, isSpace, isNumber)
 import Data.Functor (($>))
 import Data.Map ()
-import qualified Data.Map as Map
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Text.Megaparsec
-import Text.Megaparsec.Char (eol, digitChar)
-import Text.Megaparsec.Char.Lexer (decimal)
+import Text.Megaparsec.Char (digitChar)
 import Data.Void (Void)
 
 import VerifPal.Types
@@ -155,10 +153,9 @@ knowledge = choice [ knows, generates, leaks, assignment ]
       -- and output parameters. For now we read/parse the list of assigned
       -- variables and throw them away:
       cs <- constant `sepBy1` comma
-      let c = case cs of c:_ -> c
       symbol "="
       e <- expr
-      pure [(c, Assignment e)]
+      pure [(head cs, Assignment e)]
 
 expr :: Parser Expr
 expr = choice [ g, primitive, constHat ]
@@ -184,7 +181,7 @@ expr = choice [ g, primitive, constHat ]
       , prim2 "PKE_DEC" PKE_DEC
       , prim3 "SIGNVERIF" SIGNVERIF
       , prim2 "SIGN" SIGN
-      , prim5 "RIGNSIGNVERIF" RINGSIGNVERIF
+      , prim5 "RINGSIGNVERIF" RINGSIGNVERIF
       , prim4 "RINGSIGN" RINGSIGN
       , prim2 "BLIND" BLIND
       , prim3 "UNBLIND" UNBLIND
@@ -287,6 +284,7 @@ space, space1 :: Parser ()
 space = space' >> void (many comment1')
 space1 = space1' <|> comment1'
 
+space', space1', comment1' :: Parser ()
 space' = void $ takeWhileP (Just "any whitespace") isSpace
 space1' = void $ takeWhile1P (Just "at least one whitespace") isSpace
 

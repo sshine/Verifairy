@@ -89,7 +89,7 @@ spec_parsePrincipal = do
       parseModel challengeResponse `shouldParse` challengeResponseModel
 
     it "parses foreign_models/verifpal/test/ringsign.vp" $
-      parseModel foreign_test_ringsign `shouldParse` challengeResponseModel -- TODO not the model it should match, but it should not fail.
+      parseModel foreignRingSign `shouldParse` foreignRingSignModel
 
     it "parses data/knows_freshness.vp" $
       parseModel knows_freshness `shouldParse` knows_freshness_ast
