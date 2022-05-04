@@ -11,6 +11,10 @@ dependencies:
   - optparse-generic
   - text
   - fgl
+  - githash
+  - prettyprinter
+  - prettyprinter-ansi-terminal
+  - diagnose == 1.8.1
 
 default-extensions:
   - OverloadedStrings
@@ -21,6 +25,8 @@ library:
     - VerifPal.Types
     - VerifPal.Parser
     - VerifPal.Check
+    - VerifPal.Pretty
+    - VerifPal.Version
   source-dirs: src
 
 tests:
@@ -59,7 +65,3 @@ executables:
       - verifhal9k
       - filepath
       - optparse-applicative
-      - githash
-      - diagnose == 1.8.1
-      - prettyprinter
-      - prettyprinter-ansi-terminal
