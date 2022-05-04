@@ -7,7 +7,7 @@ import Control.Monad
 --import Data.Foldable (for_)
 import Data.Map (fromList)
 --import qualified Data.Map as Map
-import Data.Text (Text)
+import Data.Text (Text,pack,unpack)
 --import qualified Data.Text as Text
 --import Data.Text.Read (hexadecimal)
 --import Data.Void
@@ -20,7 +20,7 @@ import qualified Hedgehog.Range
 import Test.Tasty.Hspec
 
 import VerifPal.Types
-import VerifPal.Check (process, ModelState(..), ModelError(..), ProcessingCounter, CanonExpr(..),CanonKnowledge(..), equationToList, equivalenceExpr, quicksort, simplifyExpr)
+import VerifPal.Check (process, ModelState(..), ModelError(..), ProcessingCounter, CanonExpr(..),CanonKnowledge(..), equationToList, equivalenceExpr, simplifyExpr, decanonicalizeExpr)
 import Data.Map (Map)
 import qualified Data.Map as Map
 
@@ -321,34 +321,90 @@ spec_equivalence = do
       modelState `shouldHaveEquivalence` ["gyx", "gxy"]
 
 genKnowledge :: MonadGen m => m CanonKnowledge
-genKnowledge = do
-  Hedgehog.Gen.choice [
-    pure CPrivate,
-    pure CPublic,
-    pure CGenerates,
-    pure CPassword]
-genConstant :: MonadGen m => m CanonExpr
-genConstant = do
-  name <- Hedgehog.Gen.text (Hedgehog.Range.constant 5 10) Hedgehog.Gen.alphaNum
-  knowledge <- genKnowledge
+genKnowledge =
+  Hedgehog.Gen.element [
+    CPrivate,
+    CPublic,
+    CGenerates,
+    CPassword
+    ]
+
+genConstantWithKnowledge :: MonadGen m => CanonKnowledge -> m CanonExpr
+genConstantWithKnowledge knowledge = do
+  name' <- Hedgehog.Gen.text (Hedgehog.Range.constant 1 5) Hedgehog.Gen.alphaNum
+  -- we prepend a value to the name depending on the knowledge type;
+  -- this ensure we do not generate constants with differing knowledge types
+  -- (which is a type error); without having to get into MonadState territory
+  let uname = Data.Text.unpack name'
+      uname' = case knowledge of
+        CPrivate -> 's':uname -- "secret"
+        CPublic -> 'p':uname -- "public"
+        CGenerates -> 'g':uname -- "generates"_
+        CPassword -> 'c':uname -- "code"
+      name = Data.Text.pack uname'
   pure (CConstant (Constant {constantName = name}) knowledge)
-genEquationLink :: MonadGen m => CanonExpr -> m CanonExpr
+
+genConstant :: MonadGen m => m CanonExpr
+genConstant = genKnowledge >>= genConstantWithKnowledge
+
+genEquationLinkWithKnowledge :: MonadGen m => CanonKnowledge -> m CanonExpr -> m CanonExpr
+genEquationLinkWithKnowledge knowledge lhs = do
+  Hedgehog.Gen.small $ Hedgehog.Gen.recursive Hedgehog.Gen.choice [
+    CG <$> (genConstantWithKnowledge knowledge) -- TODO throwing away lhs is a bit sad here, but we need to ensure the knowledge is in there.
+    ] [
+    -- the three cases puts the guaranteeed Knowledge in each of the three terms
+    do
+      lhs2 <- Hedgehog.Gen.small $ genEquationLinkWithKnowledge knowledge lhs
+      rhs <- Hedgehog.Gen.small $ genEquationLink genCanonExpr
+      pure ((:^^:) lhs2 rhs),
+    do
+      lhs2 <- Hedgehog.Gen.small $ genEquationLink lhs
+      rhs <- Hedgehog.Gen.small $ genEquationLink (genCanonExprWithKnowledge knowledge)
+      case rhs of
+        CG _ -> do -- might have hit the case where genEquation throws away lhs
+          rhs <- genCanonExprWithKnowledge knowledge
+          pure ((:^^:) lhs2 rhs)
+        _ -> pure ((:^^:) lhs2 rhs),
+    do
+      lhs2 <- Hedgehog.Gen.small $ genEquationLink lhs
+      rhs <- Hedgehog.Gen.small $ genEquationLinkWithKnowledge knowledge genCanonExpr
+      pure ((:^^:) lhs2 rhs)
+    ]
+
+genEquationLink :: MonadGen m => m CanonExpr -> m CanonExpr
 genEquationLink lhs = do
-  Hedgehog.Gen.recursive Hedgehog.Gen.choice [
-    pure lhs
+  Hedgehog.Gen.small $ Hedgehog.Gen.recursive Hedgehog.Gen.choice [
+    CG <$> genConstant -- this is problematic
     ] [
     do
-      lhs <- genEquationLink lhs
-      rhs <- genCanonExpr
-      rhs <- genEquationLink rhs
+      lhs <- Hedgehog.Gen.small lhs
+      rhs <- Hedgehog.Gen.small genCanonExpr
+      pure ((:^^:) lhs rhs),
+    do
+      lhs <- Hedgehog.Gen.small $ genEquationLink lhs
+      rhs <- Hedgehog.Gen.small $ genEquationLink (Hedgehog.Gen.small $ genCanonExpr)
       pure ((:^^:) lhs rhs)
     ]
+genEquationWithKnowledge :: MonadGen m => CanonKnowledge -> m CanonExpr
+genEquationWithKnowledge knowledge = do
+  Hedgehog.Gen.recursive Hedgehog.Gen.choice [
+    CG <$> (genConstantWithKnowledge knowledge)
+    ] [
+       Hedgehog.Gen.small $ genEquationLinkWithKnowledge knowledge genCanonExpr
+    ]
+
 genEquation :: MonadGen m => m CanonExpr
 genEquation = do
-  root <- genCanonExpr
-  let rootx = CG root
-  Hedgehog.Gen.recursive Hedgehog.Gen.choice [
-    pure rootx] [genEquationLink rootx]
+  Hedgehog.Gen.small $ Hedgehog.Gen.small $ Hedgehog.Gen.recursive Hedgehog.Gen.choice [
+    CG <$> genConstant
+    ] [
+   do
+     Hedgehog.Gen.small $ genEquationLink (genEquation),
+   do
+      c <- genCanonExpr
+      pure (CG c)
+    ]
+
 genPrimitiveCanonExpr :: MonadGen m => m (PrimitiveP CanonExpr)
 genPrimitiveCanonExpr = do
   let arityN = [CONCAT,HASH,PW_HASH]
@@ -368,38 +424,157 @@ genPrimitiveCanonExpr = do
     Hedgehog.Gen.element arity5 <*> genCanonExpr <*> genCanonExpr <*> genCanonExpr <*> genCanonExpr <*> genCanonExpr
     ]
 
+
+genPrimitiveCanonExprWithKnowledge :: MonadGen m => CanonKnowledge -> m (PrimitiveP CanonExpr)
+genPrimitiveCanonExprWithKnowledge knowledge = do
+  let arityN = [CONCAT,HASH,PW_HASH]
+  let unary = [SPLIT,SHAMIR_SPLIT]
+  let binary = [ASSERT,MAC,ENC,DEC,PKE_ENC,PKE_DEC,SIGN,BLIND,SHAMIR_JOIN]
+  let arity3 = [HKDF, AEAD_ENC, AEAD_DEC, SIGNVERIF, UNBLIND]
+  let arity4 = [RINGSIGN]
+  let arity5 = [RINGSIGNVERIF]
+  Hedgehog.Gen.recursive Hedgehog.Gen.choice [
+    -- need at least one non-recursive choice for Gen.recursive:
+    HASH <$> (\f -> [f]) <$> genConstantWithKnowledge knowledge
+    ] [
+    do
+      lstN <- Hedgehog.Gen.list (Hedgehog.Range.constant 0 10) genCanonExpr
+      cknow <- genCanonExprWithKnowledge knowledge
+      Hedgehog.Gen.element arityN <*> Hedgehog.Gen.shuffle (cknow:lstN),
+      Hedgehog.Gen.element unary <*> genCanonExprWithKnowledge knowledge,
+    -- arity2:
+    Hedgehog.Gen.element binary <*> genCanonExpr <*> genCanonExprWithKnowledge knowledge,
+    Hedgehog.Gen.element binary <*> genCanonExprWithKnowledge knowledge <*> genCanonExpr,
+    -- arity3
+    Hedgehog.Gen.element arity3 <*> genCanonExpr <*> genCanonExpr <*> genCanonExprWithKnowledge knowledge,
+    Hedgehog.Gen.element arity3 <*> genCanonExpr <*> genCanonExprWithKnowledge knowledge <*> genCanonExpr,
+    Hedgehog.Gen.element arity3 <*> genCanonExprWithKnowledge knowledge <*> genCanonExpr <*> genCanonExpr,
+    -- arity4
+    Hedgehog.Gen.element arity4 <*> genCanonExpr <*> genCanonExpr <*> genCanonExpr <*> genCanonExprWithKnowledge knowledge,
+    Hedgehog.Gen.element arity4 <*> genCanonExpr <*> genCanonExpr <*> genCanonExprWithKnowledge knowledge <*> genCanonExpr,
+    Hedgehog.Gen.element arity4 <*> genCanonExpr <*> genCanonExprWithKnowledge knowledge <*> genCanonExpr <*> genCanonExpr,
+    Hedgehog.Gen.element arity4 <*> genCanonExprWithKnowledge knowledge <*> genCanonExpr <*> genCanonExpr <*> genCanonExpr,
+    -- arity5
+    Hedgehog.Gen.element arity5 <*> genCanonExpr <*> genCanonExpr <*> genCanonExpr <*> genCanonExpr <*> genCanonExprWithKnowledge knowledge,
+    Hedgehog.Gen.element arity5 <*> genCanonExpr <*> genCanonExpr <*> genCanonExpr <*> genCanonExprWithKnowledge knowledge <*> genCanonExpr,
+    Hedgehog.Gen.element arity5 <*> genCanonExpr <*> genCanonExpr <*> genCanonExprWithKnowledge knowledge <*> genCanonExpr <*> genCanonExpr,
+    Hedgehog.Gen.element arity5 <*> genCanonExpr <*> genCanonExprWithKnowledge knowledge <*> genCanonExpr <*> genCanonExpr <*> genCanonExpr,
+    Hedgehog.Gen.element arity5 <*> genCanonExprWithKnowledge knowledge <*> genCanonExpr <*> genCanonExpr <*> genCanonExpr <*> genCanonExpr
+    ]
+
+genCPrimitiveWithKnowledge :: MonadGen m => CanonKnowledge -> m CanonExpr
+genCPrimitiveWithKnowledge knowledge = do
+  checked <- Hedgehog.Gen.choice [pure HasQuestionMark, pure HasntQuestionMark]
+  prim <- genPrimitiveCanonExprWithKnowledge knowledge
+  pure (CPrimitive prim checked)
+
 genCPrimitive :: MonadGen m => m CanonExpr
 genCPrimitive = do
   checked <- Hedgehog.Gen.choice [pure HasQuestionMark, pure HasntQuestionMark]
   prim <- genPrimitiveCanonExpr
   pure (CPrimitive prim checked)
+
+genCanonExprWithKnowledge :: MonadGen m => CanonKnowledge -> m CanonExpr
+genCanonExprWithKnowledge knowledge = do
+  Hedgehog.Gen.small $ Hedgehog.Gen.recursive Hedgehog.Gen.choice [
+    genConstantWithKnowledge knowledge
+    ] [Hedgehog.Gen.small $ genEquationWithKnowledge knowledge,
+       Hedgehog.Gen.small $ genCPrimitiveWithKnowledge knowledge,
+       (Hedgehog.Gen.small $ genCanonExprWithKnowledge knowledge) >>= transformEquivalent
+       ]
+
 genCanonExpr :: MonadGen m => m CanonExpr
 genCanonExpr = do
-  Hedgehog.Gen.recursive Hedgehog.Gen.choice [genConstant] [genEquation, genCPrimitive]
+  Hedgehog.Gen.recursive Hedgehog.Gen.choice [
+    genConstant] [ genEquation, genCPrimitive, genCanonExpr >>= transformEquivalent  ]
+
+hprop_equivalenceExpr :: Hedgehog.Property
+hprop_equivalenceExpr =
+  -- if they are structurally equivalent then equivalenceExpr should also
+  -- be true. the converse is NOT necessarily true.
+  -- this test detects when equivalenceExpr is too dismissive.
+  withTests 15000 $
+  property $ do
+  eq1 <- forAll $ genCanonExpr
+  Hedgehog.diff eq1 equivalenceExpr eq1
+
+transformEquivalent :: MonadGen m => CanonExpr -> m CanonExpr
+transformEquivalent exp = do
+  -- this performs the inverse of simplifyExpr, making expressions
+  -- more complicated while still equivalent.
+  let more foo = Hedgehog.Gen.recursive Hedgehog.Gen.choice [ pure foo] [ transformEquivalent foo ]
+      randpair = genCanonExpr >>= pair
+      pair orig = more orig >>= \key1 -> more orig >>= \key2 -> pure (key1,key2)
+  Hedgehog.Gen.small $ Hedgehog.Gen.recursive Hedgehog.Gen.choice [
+    pure exp] [
+    more exp,
+    do
+      randpair >>= \(key1,key2) ->
+        more exp >>= \exp ->
+          more (CPrimitive (ENC key1 exp) HasntQuestionMark) >>= \enc ->
+            more (CPrimitive (DEC key2 enc) HasntQuestionMark),
+    do
+      randpair >>= \(key1,key2) ->
+        more exp >>= \exp1 ->
+          randpair >>= \(ad1,ad2) ->
+            more (CPrimitive (AEAD_ENC key1 exp1 ad1) HasntQuestionMark) >>= \enc ->
+                more (CPrimitive (AEAD_DEC key2 enc ad2) HasntQuestionMark),
+    do
+      randpair >>= \(key1,key2) ->
+        pair exp >>= \(exp1,exp2) ->
+          more (CPrimitive (SIGN key1 exp1) HasntQuestionMark) >>= \signed ->
+            more (CPrimitive (SIGNVERIF (CG key2) exp2 signed) HasntQuestionMark),
+    case exp of
+      (CPrimitive (SIGN a m) hasq) -> do
+        -- cool, opportunity to test blinding!
+        -- UNBLIND(k, m,
+        --   SIGN(a,
+        --     BLIND(k, m))): SIGN(a, m)
+        randpair >>= \(key1,key2) ->
+          pair m >>= \(exp1,exp2) ->
+            more a >>= \more_a ->
+              more (CPrimitive (BLIND key1 exp1) hasq)>>= \blind ->
+                more (CPrimitive (SIGN more_a blind) hasq) >>= \signed ->
+                  more (CPrimitive (UNBLIND key2 exp2 signed) hasq)
+      exp -> more exp
+    ]
+
+hprop_encryptEquivalence :: Hedgehog.Property
+hprop_encryptEquivalence =
+  withTests 5000 $
+  property $ do
+    message <- forAll genCanonExpr
+    transformed <- forAll $ transformEquivalent message
+    Hedgehog.diff message equivalenceExpr transformed
+    Hedgehog.diff (simplifyExpr message) equivalenceExpr (simplifyExpr transformed)
 
 hprop_simplifyExprEquivalence :: Hedgehog.Property
 hprop_simplifyExprEquivalence =
   -- simplification doesn't oversimplify, and is transitive:
-  verifiedTermination $ property $ do
+  -- TODO this doesn't really work right now, does hedgehog generate
+  -- simplifiable messages?
+  withDiscards 5000 $
+  withTests 1000 $
+  -- verifiedTermination $
+  property $ do
     eq1 <- forAll $ genCanonExpr
-    ( equivalenceExpr (simplifyExpr eq1) eq1 &&
-      equivalenceExpr eq1 (simplifyExpr eq1)) === True
-
-hprop_physicalEquivalence :: Hedgehog.Property
-hprop_physicalEquivalence =
-  -- if they are physicall equivalent then equivalenceExpr should also
-  -- be true. the converse is NOT necessarily true.
-  -- this test detects when equivalenceExpr is too dismissive.
-  verifiedTermination $ property $ do
-    ex1 <- forAll $ genCanonExpr
-    ex2 <- forAll $ genCanonExpr
-    if ex1 == ex2
-      then do equivalenceExpr ex1 ex2 === True
+    complicated <- forAll $ transformEquivalent eq1
+    let simpl1 = (simplifyExpr complicated)
+        did_simplify = not (simpl1 == eq1)
+    classify "simplified" did_simplify
+    if did_simplify
+      then do
+        -- test internal consistency between simplifyExpr and equivalenceExpr:
+        Hedgehog.diff simpl1 equivalenceExpr simpl1
+        Hedgehog.diff eq1    equivalenceExpr simpl1
+        Hedgehog.diff simpl1 equivalenceExpr eq1
       else pure ()
 
 hprop_equationsAreEquivalent :: Hedgehog.Property
 hprop_equationsAreEquivalent =
-  verifiedTermination $ property $ do
+  withDiscards 50000 $ withTests 10000 $
+  property $
+  do
     eq1 <- forAll $ genEquation
     eq2 <- forAll $ genEquation
     let theyAreEqual = equivalenceExpr eq1 eq2
@@ -407,11 +582,85 @@ hprop_equationsAreEquivalent =
         lst2 = equationToList [] eq2
         simpl1 = simplifyExpr eq1
         simpl2 = simplifyExpr eq2
-    _ <- equivalenceExpr simpl1 simpl2 === theyAreEqual
-    _ <- equivalenceExpr simpl1 eq2 === theyAreEqual
-    _ <- equivalenceExpr eq1 simpl2 === theyAreEqual
-    -- the list should be physically equivalent since we are dealing with
-    -- CanonExpr which should be canonical:
-    (lst1 == lst2) === theyAreEqual
+        iseq [] [] = True
+        iseq (x:xs) (y:ys) = equivalenceExpr x y && iseq xs ys
+        iseq [] (_:_) = False
+        iseq (_:_) [] = False
+    classify "equivalenceExpr" theyAreEqual
+    equivalenceExpr simpl1 simpl2 === theyAreEqual
+    equivalenceExpr simpl1 eq2 === theyAreEqual
+    equivalenceExpr eq1 simpl2 === theyAreEqual
+    iseq lst1 lst2 === theyAreEqual
+      -- the list should be structurally equivalent since we are dealing with
+      -- CanonExpr which should be canonical:
 
--- TODO would be nice to have a property test where we construct exactly one constant with CGenerates knowledge type and then wrap it in various constructors; finally in a ModelState in order to test that processQuery accurately determines freshness. and of course a ModelState without any fresh stuff to detect false positives.
+cexprHasFreshness :: CanonExpr -> Bool
+cexprHasFreshness cexpr =
+  let (mlst, decan) = decanonicalizeExpr [] cexpr
+      const = Constant {constantName="howfresh"}
+      model = Model {
+        modelAttacker = Passive,
+        modelParts = [
+            ModelPrincipal (Principal {
+                               principalName="A",
+                               principalKnows=mlst++[(const, Assignment decan)]
+                               }),
+            ModelQueries [
+                Query {
+                    queryKind = FreshnessQuery { freshnessConstant = const },
+                    queryOptions = Nothing
+                    }
+                ]
+            ]
+        }
+      ms = process model
+      qr = msQueryResults ms
+      isFresh [(Query {}, result)] = result
+      isFresh _ = False
+      testResult = isFresh qr :: Bool
+  in testResult
+
+-- Test that we genCanonExpr will generate values with and without freshness
+hprop_hasFreshness :: Hedgehog.Property
+hprop_hasFreshness =
+  withDiscards 5000 $
+  withTests 1000 $ verifiedTermination $ property $ do
+    cexp <- forAll $ genCanonExpr
+    let res = cexprHasFreshness cexp
+    if res then pure() else discard
+hprop_noFreshness :: Hedgehog.Property
+hprop_noFreshness =
+  withDiscards 5000 $
+  withTests 1000 $ verifiedTermination $ property $ do
+    cexp <- forAll $ genCanonExpr
+    let res = cexprHasFreshness cexp
+    if not res then pure() else discard
+
+hprop_fuzzFreshness :: Hedgehog.Property
+hprop_fuzzFreshness =
+  -- In this test we construct at least one constant with
+  --   CGenerates knowledge type
+  -- and then wrap it in various constructors; finally in a ModelState
+  -- in order to test that processQuery accurately determines freshness.
+  -- in the cases where do_fresh is NOT CGenerates and we would fail
+  -- the freshness test, we discard the output to check that it is possible
+  -- to fail freshness queries (for models that conceivably do not have it).
+  withDiscards 5000 $
+  withTests 20000 $ verifiedTermination $ property $ do
+    do_fresh <- forAll $ genKnowledge
+    --let do_fresh = CGenerates
+    classify "guaranteed fresh" $ do_fresh == CGenerates
+    classify "NOT guaranteed fresh" $ do_fresh /= CGenerates
+    with_k <- forAll $ genCanonExprWithKnowledge do_fresh
+    let testResult = cexprHasFreshness with_k
+    --    annotateShow("ms"::Text, ms)
+        testProp = testResult === (CGenerates == do_fresh)
+    -- testProp:
+    -- 1) should always be True if we put CGenerates in there
+    -- 2) we didn't put CGenerates, and it didn't have freshness
+    -- 3) we have accidental freshness in here, discard that
+    if CGenerates == do_fresh || not testResult
+      then testProp
+      else do
+        -- throw away Freshness==True when we did not gen explicit CGenerates:
+        discard

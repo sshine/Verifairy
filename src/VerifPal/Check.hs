@@ -11,12 +11,11 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
-import Debug.Trace
 import Data.Graph.Inductive
 
-import System.IO.Unsafe (unsafePerformIO)
 --import Data.Graph.Inductive.Graph (mkGraph, LNode, LEdge, OrdGr, DynGraph, empty, Graph)
 --import Data.Graph.Inductive.PatriciaTree
+import Data.Graph.Inductive.Query.TransClos
 
 data ModelError
   = OverlappingConstant Constant Text
@@ -44,10 +43,11 @@ data ModelState = ModelState
 type ProcessingCounter = Int
 
 -- Everyone knows the magic constant "nil" TODO reference manual?
+emptyConstantMap :: Map Constant Knowledge
 emptyConstantMap = Map.fromList [
   (Constant {constantName="nil"}, Public)
   ]
-
+emptyPrincipalConstantMap :: Map Constant (Knowledge, ProcessingCounter)
 emptyPrincipalConstantMap = Map.fromList [
   (Constant {constantName="nil"}, (Public,0))
   ]
@@ -66,17 +66,21 @@ type EvalM a = State ModelState a
 -- TODO: Check if constants are unique
 -- TODO: Check if a given variable is fresh
 
-process :: Model -> ModelState
-process model =
-  let m = execState (processM model) emptyModelState
-      () = unsafePerformIO (putStrLn "yo")
+buildKnowledgeGraph :: ModelState -> Bool
+buildKnowledgeGraph m =
+  let vertices = [] :: [(Node, Int)]
+      edges = []  :: [LEdge Int]
+      g = mkGraph (vertices) (edges) :: Gr Int Int
+      -- compute transitive reflexive closure aka compute reachability for each vertice pair:
+      gtrc = Data.Graph.Inductive.Query.TransClos.trc g
+      -- shortest path: Data.Graph.Inductive.Query.SP
   in
-    let vertices = [] :: [(Node, Int)]
-        edges = []  :: [LEdge Int]
-        g = mkGraph (vertices)
-                    (edges) :: Gr Int Int
-    in
-      m
+    True
+process :: Model -> ModelState
+process model = do
+  let m = execState (processM model) emptyModelState
+      _ = buildKnowledgeGraph m
+  m
 
 processM :: Model -> State ModelState ()
 processM Model{..} =
@@ -92,7 +96,7 @@ processModelPart (ModelQueries qs) = do
   mapM_ processQuery qs
 
 processModelPart (ModelMessage (Message sender receiver consts)) = do
-  forM_ consts $ \(cconst,cguard) -> do
+  forM_ consts $ \(cconst,_TODO_cguard) -> do
     -- check the sender knows all the constants being sent:
     hasPrincipalConstantOrError sender cconst "sender reference to unknown constant"
     -- add them to the knowledge of the receiver so they know them too:
@@ -158,6 +162,8 @@ processQuery (Query (UnlinkabilityQuery consts) queryOptions) = do
 processQuery (Query (AuthenticationQuery msg) queryOptions) = do
   addError (NotImplemented "authentication query not implemented") -- FIXME
 
+processQuery (Query (EquivalenceQuery []) _queryOptions) = pure ()
+
 processQuery query@(Query (EquivalenceQuery consts@(c1:cs)) queryOptions) = do
   forM_ consts $ \cconst -> do
     constantExistsOrError cconst
@@ -195,7 +201,7 @@ hasPrincipalConstant principalName constant = do
   currentCount <- getCounter
   principalMap <- gets (fromMaybe emptyPrincipalConstantMap . Map.lookup principalName . msPrincipalConstants)
   case Map.lookup constant principalMap of
-    Just (know, cou) | cou <= currentCount -> pure True
+    Just (_know, cou) | cou <= currentCount -> pure True
     Just _ -> pure False -- not yet
     Nothing -> pure False
 
@@ -274,11 +280,34 @@ equationToList acc c =
     -- term was not :^^: so it's just a term:
     term -> quicksort (term:acc)
 
-simplifyExpr :: CanonExpr -> CanonExpr
-simplifyExpr e = do
+simplifyExpr' :: Bool -> CanonExpr -> CanonExpr
+simplifyExpr' skipPrimitive e = do
   case e of
-    -- DEC(k, ENC(k, payload)) = payload
-    CPrimitive (DEC key encrypted) hasq -> do
+    -- UNBLIND(k, m, SIGN(a, BLIND(k, m))): SIGN(a, m)
+    CPrimitive (UNBLIND k m (CPrimitive (SIGN a (CPrimitive (BLIND k2 m2) hasq'')) hasq')) hasq
+      | not skipPrimitive -> do
+      let s_k = simplifyExpr k
+          s_m = simplifyExpr m
+          s_a = simplifyExpr a
+          s_k2 = simplifyExpr k2
+          s_m2 = simplifyExpr m2
+      if (equivalenceExpr s_k s_k2) && (equivalenceExpr s_m s_m2)
+      then (CPrimitive (SIGN s_a s_m) hasq)
+      else (CPrimitive (UNBLIND s_k s_m (CPrimitive (SIGN s_a (CPrimitive (BLIND s_k2 s_m2) hasq'')) hasq')) hasq)
+    -- SIGNVERIF(G^k,m,SIGN(k,m)) -> m
+    CPrimitive (SIGNVERIF g_key message (CPrimitive (SIGN key message') hasq')) hasq
+      | not skipPrimitive -> do
+      let simple_g_key = simplifyExpr g_key
+          simple_key = simplifyExpr key
+          simple_message = simplifyExpr message
+          simple_message' = simplifyExpr message'
+      if (equivalenceExpr simple_g_key (CG simple_key) &&
+          equivalenceExpr simple_message simple_message')
+         then simple_message
+         else (CPrimitive (SIGNVERIF simple_g_key simple_message (CPrimitive (SIGN simple_key simple_message') hasq')) hasq)
+
+    -- DEC(k, ENC(k, payload)) -> payload
+    CPrimitive (DEC key encrypted) hasq | not skipPrimitive -> do
       let simple_enc = simplifyExpr encrypted
           simple_key = simplifyExpr key
       case simple_enc of
@@ -286,7 +315,9 @@ simplifyExpr e = do
         CPrimitive (ENC simple_key' payload) _
           | equivalenceExpr simple_key simple_key' -> simplifyExpr payload
         _ -> CPrimitive (DEC simple_key simple_enc) hasq
-    CPrimitive (AEAD_DEC key encrypted ad) hasq -> do
+    -- AEAD_DEC(k, AEAD_ENC(k, payload, ad), ad) -> payload
+    CPrimitive (AEAD_DEC key encrypted ad) hasq
+      | not skipPrimitive-> do
       let simple_enc = simplifyExpr encrypted
           simple_key = simplifyExpr key
           simple_ad  = simplifyExpr ad
@@ -296,8 +327,14 @@ simplifyExpr e = do
           | equivalenceExpr simple_key simple_key' && equivalenceExpr simple_ad simple_ad' -> simplifyExpr payload
         _ -> CPrimitive (AEAD_DEC simple_key simple_enc simple_ad) hasq
     -- TODO may need: CPrimitive ep hasq -> CPrimitive (mapPrimitiveP ep simplifyExpr) hasq
-    e -> e
-
+    CPrimitive p hq | skipPrimitive -> simplifyExpr' False (CPrimitive (mapPrimitiveP p (simplifyExpr)) hq)
+    CPrimitive p hq -> CPrimitive p hq
+    CG e -> CG (simplifyExpr' skipPrimitive e)
+    (:^^:) a b -> (:^^:) (simplifyExpr a) (simplifyExpr b)
+    e@(CConstant {}) -> e
+simplifyExpr :: CanonExpr -> CanonExpr
+simplifyExpr e =
+  simplifyExpr' True e
 equivalenceExpr' :: CanonExpr -> CanonExpr -> Bool
 equivalenceExpr' o_e1 o_e2 =
   -- TODO it might be nice to memoize the results of these comparisons
@@ -320,8 +357,6 @@ equivalenceExpr' o_e1 o_e2 =
     -- Decryption of encrypted plaintext is equivalent to plaintext.
     -- (encrypted) may not immediately be an ENC, so we need to recurse:
     -- TODO this is not covered by simplifyExpr ? commenting out the part below fails the equivalence3.vp test:
-    (e, CPrimitive (DEC key encrypted) _)
-      | equivalenceExpr encrypted (CPrimitive (ENC key e) HasntQuestionMark) -> True
     --
     (CPrimitive p _, CPrimitive p' _) -> equivalencePrimitive p p'
     (CG e, CG e') -> equivalenceExpr e e'
@@ -348,6 +383,8 @@ equivalencePrimitive p1 p2 = do
   let eqExpr e1 e2 = equivalenceExpr e1 e2
   let eqExprs [] [] = True
       eqExprs (x:xs) (y:ys) = eqExpr x y && eqExprs xs ys
+      eqExprs [] (_:_) = False
+      eqExprs (_:_) [] = False
   case (p1, p2) of
     -- TODO is this the right place for this optimization?
     -- NOTE: we do not have any when-guards in here; this way we can
@@ -355,8 +392,8 @@ equivalencePrimitive p1 p2 = do
     -- end up in endless loops.
     -- we can however do simple transformations as long as we remove
     -- constructors:
-    (CONCAT e, SPLIT (CPrimitive (CONCAT e') _TODO)) -> eqExprs e e'
-    (SPLIT (CPrimitive (CONCAT e') _TODO), CONCAT e) -> eqExprs e e'
+    --(CONCAT e, SPLIT (CPrimitive (CONCAT e') _TODO)) -> eqExprs e e'
+    --(SPLIT (CPrimitive (CONCAT e') _TODO), CONCAT e) -> eqExprs e e'
     -- simple equivalence: equivalent constructors, need to
     -- compare the leaf exprs:
     (ASSERT e1 e2, ASSERT e'1 e'2) ->
@@ -450,30 +487,89 @@ canonicalizeExpr m orig_exp = do
         Nothing -> CConstant const CPublic -- TODO should never happen
     EPrimitive p cp -> CPrimitive (mapPrimitiveP p self) cp
 
-mapPrimitiveP :: PrimitiveP a -> (a -> b) -> PrimitiveP b
-mapPrimitiveP prim f =
+-- produces an Expr that is still in its canonicalized form,
+-- ie we do not refold constant indirections
+decanonicalizeExpr :: [(Constant,Knowledge)] -> CanonExpr -> ([(Constant, Knowledge)], Expr)
+decanonicalizeExpr m orig_exp = do
+  case orig_exp of
+    CG exp ->
+      do
+        let (m1, exp2) = decanonicalizeExpr m exp
+        (m1, G exp2)
+    (:^^:) oldconst exp -> do
+      -- const is an expression which needs to be made into a constant here
+      let (m1,rhs) = decanonicalizeExpr m exp
+      let (m2,lhs) = decanonicalizeExpr m1 oldconst
+          const = Constant {constantName = "aTODO"}
+      (((const,Assignment lhs):m2), (:^:) const rhs)
+    CConstant const cknow ->
+      let eknow = case cknow of
+                    CPrivate -> Private
+                    CPublic -> Public
+                    CGenerates -> Generates
+                    CPassword -> Password
+      in
+        (((const,eknow):m), EConstant const)
+    CPrimitive p cp -> do
+      let (m2, prim) = mapAccPrimitiveP m p (\m' pr -> decanonicalizeExpr m' pr)
+      (m2, EPrimitive prim cp)
+    --  CConstant const knowledge -> TODO have to put this in the knowledge map
+
+mapAccPrimitiveP :: aux -> PrimitiveP a -> (aux -> a -> (aux,b)) -> (aux, PrimitiveP b)
+mapAccPrimitiveP aux prim f = do
+  let nary constr exps = do
+        let (aux2,args) = foldl (
+              \(aux,acc) exp ->
+                let (aux',m1) = f aux exp in (aux',m1:acc)
+              ) (aux,[]) exps
+        (aux2, constr (reverse args))
+      arity1 constr e1 =
+        let (aux1, m1) = f aux e1
+        in (aux1, constr m1)
+      arity2 constr e1 e2 =
+        let (aux1, constr') = arity1 constr e1
+            (aux2, m2) = f aux1 e2
+        in (aux2, constr' m2)
+      arity3 constr e1 e2 e3 =
+        let (aux2, constr') = arity2 constr e1 e2
+            (aux3, m3) = f aux2 e3
+        in (aux3, constr' m3)
+      arity4 constr e1 e2 e3 e4 =
+        let (aux3, constr') = arity3 constr e1 e2 e3
+            (aux4, m4) = f aux3 e4
+        in (aux4, constr' m4)
+      arity5 constr e1 e2 e3 e4 e5 =
+        let (aux4, constr') = arity4 constr e1 e2 e3 e4
+            (aux5, m5) = f aux4 e5
+        in (aux5, constr' m5)
   case prim of
-    ASSERT e1 e2 -> ASSERT (f e1) (f e2)
-    CONCAT exps -> CONCAT (map f exps)
-    SPLIT exp -> SPLIT (f exp)
-    HASH exps -> HASH (map f exps)
-    MAC e1 e2 -> MAC (f e1) (f e2)
-    HKDF e1 e2 e3 -> HKDF (f e1) (f e2) (f e3)
-    PW_HASH exps -> PW_HASH (map f exps)
-    ENC e1 e2 -> ENC (f e1) (f e2)
-    DEC e1 e2 -> DEC (f e1) (f e2)
-    AEAD_ENC e1 e2 e3 -> AEAD_ENC (f e1) (f e2) (f e3)
-    AEAD_DEC e1 e2 e3 -> AEAD_DEC (f e1) (f e2) (f e3)
-    PKE_ENC e1 e2 -> PKE_ENC (f e1) (f e2)
-    PKE_DEC e1 e2 -> PKE_DEC (f e1) (f e2)
-    SIGN e1 e2 -> SIGN (f e1) (f e2)
-    SIGNVERIF e1 e2 e3 -> SIGNVERIF (f e1) (f e2) (f e3)
-    RINGSIGN e1 e2 e3 e4 -> RINGSIGN (f e1) (f e2) (f e3) (f e4)
-    RINGSIGNVERIF e1 e2 e3 e4 e5 -> RINGSIGNVERIF (f e1) (f e2) (f e3) (f e4) (f e5)
-    BLIND e1 e2 -> BLIND (f e1) (f e2)
-    UNBLIND e1 e2 e3 -> UNBLIND (f e1) (f e2) (f e3)
-    SHAMIR_SPLIT e1 -> SHAMIR_SPLIT (f e1)
-    SHAMIR_JOIN e1 e2 -> SHAMIR_JOIN (f e1) (f e2)
+    ASSERT e1 e2 -> arity2 ASSERT e1 e2
+    CONCAT exps -> nary CONCAT exps
+    SPLIT e1 -> arity1 SPLIT e1
+    HASH exps -> nary HASH exps
+    MAC e1 e2 -> arity2 MAC e1 e2
+    HKDF e1 e2 e3 -> arity3 HKDF e1 e2 e3
+    PW_HASH exps -> nary PW_HASH exps
+    ENC e1 e2 -> arity2 ENC e1 e2
+    DEC e1 e2 -> arity2 DEC e1 e2
+    AEAD_ENC e1 e2 e3 -> arity3 AEAD_ENC e1 e2 e3
+    AEAD_DEC e1 e2 e3 -> arity3 AEAD_DEC e1 e2 e3
+    PKE_ENC e1 e2 -> arity2 PKE_ENC e1 e2
+    PKE_DEC e1 e2 -> arity2 PKE_DEC e1 e2
+    SIGN e1 e2 -> arity2 SIGN e1 e2
+    SIGNVERIF e1 e2 e3 -> arity3 SIGNVERIF e1 e2 e3
+    RINGSIGN e1 e2 e3 e4 -> arity4 RINGSIGN e1 e2 e3 e4
+    RINGSIGNVERIF e1 e2 e3 e4 e5 -> arity5 RINGSIGNVERIF e1 e2 e3 e4 e5
+    BLIND e1 e2 -> arity2 BLIND e1 e2
+    UNBLIND e1 e2 e3 -> arity3 UNBLIND e1 e2 e3
+    SHAMIR_SPLIT e1 -> arity1 SHAMIR_SPLIT e1
+    SHAMIR_JOIN e1 e2 ->
+      let (aux1, m1) = f aux e1
+          (aux2, m2) = f aux1 e2
+      in (aux2, SHAMIR_JOIN m1 m2)
+
+mapPrimitiveP :: PrimitiveP a -> (a -> b) -> PrimitiveP b
+mapPrimitiveP prim f = snd (mapAccPrimitiveP () prim (\() a -> ((), f a)))
 
 -- note that this ONLY folds over the constants in an expression,
 -- NOT the knowledge maps, so it will not "jump" across maps of knowledge

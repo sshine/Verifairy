@@ -15,7 +15,8 @@ import Data.Void
 import VerifPal.Types
 import VerifPal.Parser (parsePrincipal, parseModelPart, parseModel)
 
-import Hedgehog
+import Hedgehog.Gen
+import Hedgehog.Range
 import Test.Hspec
 import Test.Hspec.Megaparsec
 import Test.Tasty.Hspec
@@ -23,10 +24,13 @@ import Text.Megaparsec.Error
 import Hedgehog
 import Cases
 
-hprop_yo :: Hedgehog.Property
-hprop_yo =
-  property $ do
-    parseModel "a" === parseModel "a"
+hprop_doesntCrash :: Hedgehog.Property
+hprop_doesntCrash =
+  withTests 1000 $
+  verifiedTermination $ property $ do
+    random <- forAll $ Hedgehog.Gen.text (Hedgehog.Range.constant 0 300) Hedgehog.Gen.unicode
+    let parsed = parseModel random
+    parsed === parsed
 
 spec_parsePrincipal :: Spec
 spec_parsePrincipal = do
