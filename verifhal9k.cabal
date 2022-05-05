@@ -36,6 +36,7 @@ library
     , prettyprinter
     , prettyprinter-ansi-terminal
     , text
+    , pretty-show
   default-language: Haskell2010
 
 executable verifairy

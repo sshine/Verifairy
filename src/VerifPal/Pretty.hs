@@ -8,7 +8,9 @@ import Data.Void
 import Error.Diagnose.Compat.Megaparsec (HasHints (hints))
 import Prettyprinter (Doc (..), Pretty (..), align, annotate, colon, hardline, lbracket, rbracket, space, width, (<+>))
 import Prettyprinter.Render.Terminal (AnsiStyle, Color (..), bold, color, colorDull, putDoc)
+import Text.Show.Pretty (ppDoc)
 import VerifPal.Types (Constant (..), Query (..), QueryKind (..))
+import VerifPal.Check (ModelState)
 
 prettifyQuery :: QueryKind -> String
 prettifyQuery (FreshnessQuery const) =
@@ -32,3 +34,7 @@ myAnnotate (q, res) =
       prettified =
         pretty $ prettifyQuery $ queryKind q
    in annotate (color (if res then Green else Red)) prettified
+
+prettifyModelState :: ModelState -> Doc AnsiStyle
+prettifyModelState ms =
+  pretty $ show $ ppDoc ms

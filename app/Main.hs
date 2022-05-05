@@ -14,11 +14,12 @@ import System.Exit (exitFailure)
 import System.IO (stderr)
 import VerifPal.Check (ModelState (..), process)
 import VerifPal.Parser (parseModel)
-import VerifPal.Pretty (myAnnotate)
+import VerifPal.Pretty (myAnnotate, prettifyModelState)
 import VerifPal.Version (gitBuildInfo)
 
-newtype Args = Args
-  { srcFile :: FilePath
+data Args = Args
+  { srcFile :: FilePath,
+    verbose :: Bool
   }
   deriving (Show)
 
@@ -26,7 +27,7 @@ main :: IO ()
 main = runArgsParser >>= argsHandler
 
 argsHandler :: Args -> IO ()
-argsHandler Args {srcFile = srcFile} = do
+argsHandler Args {srcFile = srcFile, verbose = verbose} = do
   srcText <- Text.readFile srcFile
   case parseModel srcText of
     Left bundle ->
@@ -39,6 +40,11 @@ argsHandler Args {srcFile = srcFile} = do
     Right model -> do
       Text.hPutStrLn stderr ("Processing file " <> Text.pack srcFile <> "...")
       let ms = VerifPal.Check.process model
+      --
+      unless (not verbose) $
+        do putStrLn ""
+           putDoc (prettifyModelState ms)
+           putStrLn ""
       -- TODO should make a Diagnostic here for each of these:
       traverse_ print (msErrors ms)
       msQueryResults ms & map myAnnotate & for_ $ \annotated -> do
@@ -60,8 +66,9 @@ argsParserInfo =
     ]
 
 argsParser :: Parser Args
-argsParser = Args <$> srcFileParser
+argsParser = Args <$> srcFileParser <*> verbose
   where
+    verbose = flag False True . mconcat $ [ short 'v' ]
     srcFileParser =
       strArgument . mconcat $
         [ metavar "<FILE.vp>"

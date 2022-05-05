@@ -15,6 +15,7 @@ dependencies:
   - prettyprinter
   - prettyprinter-ansi-terminal
   - diagnose == 1.8.1
+  - pretty-show
 
 default-extensions:
   - OverloadedStrings
