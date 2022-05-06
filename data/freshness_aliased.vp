@@ -1,8 +1,8 @@
 attacker[passive]
 principal A[
   generates a
-  b = a
-  c = b
+  b = HASH(a)
+  c = CONCAT(b,nil)
 ]
 queries[
   freshness? a
