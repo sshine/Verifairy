@@ -35,7 +35,8 @@ argsHandler Args {srcFile = srcFile, verbose = verbose} = do
           explanation = "Parse error on input"
           extra_hints = Nothing :: Maybe [Text] -- in addition to the HasHints lookup?
           diag = errorDiagnosticFromBundle short explanation extra_hints bundle
-          diag' = addFile diag srcFile (Text.unpack srcText)
+          fake_filename = "" -- TODO Parser.hs feeds in "" as the filename to "parse"
+          diag' = addFile diag fake_filename (Text.unpack srcText)
        in printDiagnostic stderr True True 4 diag'
     Right model -> do
       Text.hPutStrLn stderr ("Processing file " <> Text.pack srcFile <> "...")
