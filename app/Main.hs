@@ -12,13 +12,16 @@ import Options.Applicative
 import Prettyprinter.Render.Terminal (putDoc)
 import System.Exit (exitFailure)
 import System.IO (stderr)
-import VerifPal.Check (ModelState (..), process)
+import VerifPal.Check (ModelState (..), process, CanonExpr, canonicalizeExpr, simplifyExpr)
 import VerifPal.Parser (parseModel)
-import VerifPal.Pretty (myAnnotate, prettifyModelState)
+import VerifPal.Pretty (myAnnotate, prettifyModelState, prettifyCanonExpr)
 import VerifPal.Version (gitBuildInfo)
+import VerifPal.Types (Knowledge(..), Constant(..), Expr(..))
+import Data.Map(lookup)
 
 data Args = Args
   { srcFile :: FilePath,
+    simplify :: String,
     verbose :: Bool
   }
   deriving (Show)
@@ -27,7 +30,7 @@ main :: IO ()
 main = runArgsParser >>= argsHandler
 
 argsHandler :: Args -> IO ()
-argsHandler Args {srcFile = srcFile, verbose = verbose} = do
+argsHandler Args {srcFile = srcFile, simplify=simplify, verbose = verbose} = do
   srcText <- Text.readFile srcFile
   case parseModel srcText of
     Left bundle ->
@@ -41,6 +44,19 @@ argsHandler Args {srcFile = srcFile, verbose = verbose} = do
     Right model -> do
       Text.hPutStrLn stderr ("Processing file " <> Text.pack srcFile <> "...")
       let ms = VerifPal.Check.process model
+      --
+      case simplify of
+        "" -> pure ()
+        simplified ->
+          do putStrLn ""
+             let target = EConstant (Constant {constantName = Text.pack simplified})
+                 constmap = msConstants ms
+                 c_expr = canonicalizeExpr constmap target
+             putDoc (prettifyCanonExpr c_expr)
+             putStrLn ""
+             putStrLn "================ simplifies to ->"
+             putDoc (prettifyCanonExpr (simplifyExpr c_expr))
+             putStrLn ""
       --
       unless (not verbose) $
         do putStrLn ""
@@ -67,9 +83,10 @@ argsParserInfo =
     ]
 
 argsParser :: Parser Args
-argsParser = Args <$> srcFileParser <*> verbose
+argsParser = Args <$> srcFileParser <*> simplify <*>verbose
   where
     verbose = flag False True . mconcat $ [ short 'v' ]
+    simplify = option str (long "simplify-constant" <> short 's' <> value "")
     srcFileParser =
       strArgument . mconcat $
         [ metavar "<FILE.vp>"

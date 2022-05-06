@@ -10,7 +10,7 @@ import Prettyprinter (Doc (..), Pretty (..), align, annotate, colon, hardline, l
 import Prettyprinter.Render.Terminal (AnsiStyle, Color (..), bold, color, colorDull, putDoc)
 import Text.Show.Pretty (ppDoc)
 import VerifPal.Types (Constant (..), Query (..), QueryKind (..))
-import VerifPal.Check (ModelState)
+import VerifPal.Check (ModelState,CanonExpr)
 
 prettifyQuery :: QueryKind -> String
 prettifyQuery (FreshnessQuery const) =
@@ -38,3 +38,7 @@ myAnnotate (q, res) =
 prettifyModelState :: ModelState -> Doc AnsiStyle
 prettifyModelState ms =
   pretty $ show $ ppDoc ms
+
+prettifyCanonExpr :: CanonExpr -> Doc AnsiStyle
+prettifyCanonExpr cexp =
+  pretty $ show $ ppDoc cexp
