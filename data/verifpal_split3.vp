@@ -1,0 +1,28 @@
+// This seems like a bug in verifpal-go.
+// It fails to report that b_what is obtained.
+attacker[active]
+principal B []
+principal A [
+  knows private what
+  what_nil = CONCAT(what,nil)
+  msg = SPLIT(what_nil)
+]
+A -> B: msg
+principal B [
+  b_what_nil = CONCAT(msg, nil)
+  b_what = SPLIT(b_what_nil)
+  b_what2 = SPLIT(CONCAT(b_what,nil))
+  b_what_what = CONCAT(b_what, b_what)
+]
+principal A [
+  a_what_what = CONCAT(SPLIT(CONCAT(what,nil)), what)
+  a_what_what_x = CONCAT(what,what)
+]
+queries [
+  equivalence? msg, b_what  // OK
+  confidentiality? b_what   // OK: attacker cannot compute this, but it's equivalence to our msg
+  equivalence? a_what_what, a_what_what_x
+  confidentiality? b_what_what // OK
+  confidentiality? a_what_what // OK
+  //confidentiality? a_what_what_x // NOPE
+]
