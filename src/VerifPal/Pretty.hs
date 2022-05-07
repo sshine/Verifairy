@@ -42,3 +42,7 @@ prettifyModelState ms =
 prettifyCanonExpr :: CanonExpr -> Doc AnsiStyle
 prettifyCanonExpr cexp =
   pretty $ show $ ppDoc cexp
+
+colorYellow :: Text -> Doc AnsiStyle
+colorYellow s =
+  annotate (color Yellow) $ pretty $ s

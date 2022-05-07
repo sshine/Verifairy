@@ -3,10 +3,11 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 -- Based on: https://verifpal.com/res/pdf/manual.pdf
 
+
 module VerifPal.Types where
 
 import Data.Set()
-import Data.List.NonEmpty()
+import Data.List.NonEmpty(NonEmpty)
 import Data.Map.Strict ()
 import qualified Data.Map.Strict()
 import Data.Text (Text)
@@ -30,7 +31,7 @@ data ModelPart where
 
 data Principal = Principal
   { principalName :: PrincipalName
-  , principalKnows :: [(Constant, Knowledge)]
+  , principalKnows :: [(NonEmpty Constant, Knowledge)]
   } deriving (Eq, Ord, Show)
 
 type PrincipalName = Text
@@ -98,6 +99,7 @@ data Expr
   | (:^:) Constant Expr                   -- a^b
   | EConstant Constant                    -- a
   | EPrimitive Primitive CheckedPrimitive -- ...?
+  | EItem Int Expr -- lhs assignments, basically. the Int is an indice
   deriving (Eq, Ord, Show)
 
 type Primitive = PrimitiveP Expr

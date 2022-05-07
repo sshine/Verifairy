@@ -14,7 +14,7 @@ import System.Exit (exitFailure)
 import System.IO (stderr)
 import VerifPal.Check (ModelState (..), process, CanonExpr, canonicalizeExpr, simplifyExpr)
 import VerifPal.Parser (parseModel)
-import VerifPal.Pretty (myAnnotate, prettifyModelState, prettifyCanonExpr)
+import VerifPal.Pretty (myAnnotate, prettifyModelState, prettifyCanonExpr,colorYellow)
 import VerifPal.Version (gitBuildInfo)
 import VerifPal.Types (Knowledge(..), Constant(..), Expr(..))
 import Data.Map(lookup)
@@ -54,7 +54,8 @@ argsHandler Args {srcFile = srcFile, simplify=simplify, verbose = verbose} = do
                  c_expr = canonicalizeExpr constmap target
              putDoc (prettifyCanonExpr c_expr)
              putStrLn ""
-             putStrLn "================ simplifies to ->"
+             putDoc $ colorYellow "================ simplifies to -> ================"
+             putStrLn ""
              putDoc (prettifyCanonExpr (simplifyExpr c_expr))
              putStrLn ""
       --
@@ -63,7 +64,7 @@ argsHandler Args {srcFile = srcFile, simplify=simplify, verbose = verbose} = do
            putDoc (prettifyModelState ms)
            putStrLn ""
       -- TODO should make a Diagnostic here for each of these:
-      traverse_ print (msErrors ms)
+      traverse_ print (reverse $ msErrors ms)
       msQueryResults ms & map myAnnotate & for_ $ \annotated -> do
         putDoc annotated
         putStrLn ""

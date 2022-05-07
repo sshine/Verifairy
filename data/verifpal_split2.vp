@@ -25,7 +25,8 @@ queries [
   equivalence? b_what2, b_what, what // OK
   equivalence? b_what_what, a_what_what, a_what_what_x // OK, CONCAT(what,what)
   equivalence? b_what_what, a_what_what_x // OK, CONCAT(what,what)
-  equivalence? a_what_what, a_what_what_x
+  equivalence? a_what_what, b_what_what   // OK
+  equivalence? a_what_what, a_what_what_x // OK
   confidentiality? b_what_what // OK
   confidentiality? a_what_what // OK
   confidentiality? a_what_what_x // NOPE

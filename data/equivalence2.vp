@@ -8,7 +8,6 @@ principal A [
 principal B []
 A -> B: joined_a
 principal B [
-  // TODO this is valid, but we currently can't parse it:
   b_a, b_b, b_c = SPLIT(joined_a)
 ]
 queries [

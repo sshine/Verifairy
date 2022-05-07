@@ -12,14 +12,17 @@ import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Graph.Inductive
+import Data.List
+import Data.List.NonEmpty
 
 --import Data.Graph.Inductive.Graph (mkGraph, LNode, LEdge, OrdGr, DynGraph, empty, Graph)
 --import Data.Graph.Inductive.PatriciaTree
 import Data.Graph.Inductive.Query.TransClos
 
 data ModelError
-  = OverlappingConstant Constant Text
-  | MissingConstant Constant Text
+  = OverlappingConstant Constant
+  | MissingConstant Constant
+  | ValueToValue Constant Constant
   | NotImplemented Text
   deriving (Eq, Ord, Show)
 
@@ -109,40 +112,84 @@ processModelPart (ModelMessage (Message sender receiver consts)) = do
 processModelPart (ModelPhase (Phase {..})) = do
   pure ()
 
-processKnowledge :: PrincipalName -> (Constant, Knowledge) -> State ModelState ()
-processKnowledge principalName (constant, knowledge) = do
+processAssignment :: PrincipalName -> NonEmpty Constant -> Expr -> State ModelState ()
+processAssignment principalName lhs expr = do
+  -- For assignments we check that all the referenced constants exist
+  -- in the knowledge map associated with the current principal.
+  -- The ambition is to catch both references to undefined constants (typos)
+  -- and cases where a reference is made to a constant that exists, but it isn't
+  -- known by (principalName):
+
+  -- TODO FIXME
+  --if constant == Constant{constantName="_"}
+  --then pure ()
+
+  -- Check that all referenced constants in rhs are known to this principal:
+  foldConstantsInExpr (pure())
+    expr (\c st -> do
+             st >>= pure (hasPrincipalConstantOrError principalName c "assignment to unbound constant")
+          )
+  --
+  prMap <- gets (fromMaybe emptyPrincipalConstantMap . Map.lookup principalName . msPrincipalConstants)
+  -- TODO let simple_cexpr = simplifyExpr $ canonicalizeExpr (Map.map fst prMap) expr
+  let simple_cexpr = canonicalizeExpr (Map.map fst prMap) expr
+      constr ctr = do
+        case simple_cexpr of
+          CPrimitive (SPLIT {}) _ -> EItem ctr expr
+          CPrimitive (HKDF {}) _ -> EItem ctr expr
+          CPrimitive (SHAMIR_SPLIT {}) _ -> EItem ctr expr
+          _ -> expr
+  foldM (
+    \ctr constant ->
+      do
+        if "_" == constantName constant -- these are wildcards / discarded
+          then pure ()
+          else addConstant principalName constant (Assignment $ constr ctr)
+        pure (ctr + 1)
+    ) 0 lhs >>= \n -> let _ = n :: Int in pure ()
+
+processKnowledge :: PrincipalName -> (NonEmpty Constant, Knowledge) -> State ModelState ()
+processKnowledge principalName (constants, knowledge) = do
   -- we need to consider three "knowledges":
   -- 1) does it exist anywhere
   -- 2) does this principal know about it
   -- 3) does the attacker know about it?
-  existingConstant <- getConstant constant
-  case (existingConstant, knowledge) of
-    (Nothing, Public) -> addConstant principalName constant knowledge
-    (Nothing, Private) -> addConstant principalName constant knowledge
-    (Nothing, Password) -> addConstant principalName constant knowledge
-    (Nothing, Generates) -> addConstant principalName constant knowledge
-    (Nothing, Assignment exp) ->
-      if constant == Constant{constantName="_"}
+  --
+  -- First check that lhs is unique or "_":
+  foldM_ (
+    \acc constant ->
+      if constantName constant == "_"
       then pure ()
-      -- For assignments we check that all the referenced constants exist
-      -- in the knowledge map associated with the current principal.
-      -- The ambition is to catch both references to undefined constants (typos)
-      -- and cases where a reference is made to a constant that exists, but it isn't
-      -- known by (principalName):
-      else
-        foldConstantsInExpr (addConstant principalName constant knowledge)
-        exp (\c st -> do
-                st >>= pure (hasPrincipalConstantOrError principalName c "assignment to unbound constant")
-            )
-    (Just _, Generates) -> addError (OverlappingConstant constant "can't generate the same thing twice")
-    (Just _, Assignment _) -> addError (OverlappingConstant constant "can't assign to the same name twice")
-    (_, Leaks) ->
-      -- TODO give it to the attacker
-      modifyConstant principalName constant Leaks
-    (Just existingKnowledge, _) ->
-      if existingKnowledge == knowledge
-      then upsertPrincipalConstant principalName constant knowledge
-      else addError (OverlappingConstant constant "can't generate the same thing twice")
+      else do
+        existingConstant <- getConstant constant
+        case existingConstant of
+          Nothing -> pure ()
+          -- TODO cannot be "leaks"
+          Just Password -> pure ()
+          Just Private -> pure ()
+          Just Public -> pure ()
+          Just Generates -> addError (OverlappingConstant constant)
+          Just (Assignment {}) -> addError (OverlappingConstant constant)
+    ) () constants
+  let addThem () = foldM_ (
+        \() constant -> do
+          existingConstant <- getConstant constant
+          case (existingConstant, knowledge) of
+            (Nothing, _) -> addConstant principalName constant knowledge
+            -- principal A [ knows public x ] principal B [ knows public X ]
+            (Just Public, Public) -> upsertPrincipalConstant principalName constant knowledge
+            (Just Private, Private) -> upsertPrincipalConstant principalName constant knowledge
+            (Just Password, Password) -> upsertPrincipalConstant principalName constant knowledge
+            (Just _, _) -> addError (OverlappingConstant constant)
+        ) () constants
+  case knowledge of
+    Assignment (EConstant rhs) -> addError $ ValueToValue (Data.List.NonEmpty.head constants) rhs
+    Assignment exp -> processAssignment principalName constants exp
+    Public -> addThem ()
+    Private -> addThem ()
+    Password -> addThem ()
+    Generates -> addThem ()
+    Leaks -> pure () -- TODO add to attacker principal modifyConstant principalName constant Leaks
 
 processQuery :: Query -> State ModelState ()
 processQuery query@(Query (FreshnessQuery constant) queryOptions) = do
@@ -211,13 +258,13 @@ hasPrincipalConstantOrError principalName refconstant errorText = do
      do xy <- hasPrincipalConstant principalName refconstant
         if xy
           then pure ()
-          else addError (MissingConstant refconstant errorText)) ()
+          else addError (MissingConstant refconstant)) ()
 
 addConstant :: PrincipalName -> Constant -> Knowledge -> State ModelState ()
 addConstant principalName constant knowledge = do
   existingConstant <- gets (Map.lookup constant . msConstants)
   case existingConstant of
-    Just _ -> addError (OverlappingConstant constant "constant already defined")
+    Just _ -> addError (OverlappingConstant constant)
     Nothing -> do
       upsertConstantBoth principalName constant knowledge
 
@@ -225,7 +272,7 @@ modifyConstant :: PrincipalName -> Constant -> Knowledge -> State ModelState ()
 modifyConstant principalName constant knowledge = do
   existingConstant <- gets (Map.lookup constant . msConstants)
   case existingConstant of
-    Nothing -> addError (MissingConstant constant "Can't modify non-existent constant")
+    Nothing -> addError (MissingConstant constant)
     Just _ -> upsertConstantBoth principalName constant knowledge
 
 upsertConstantBoth :: PrincipalName -> Constant -> Knowledge -> State ModelState ()
@@ -254,15 +301,12 @@ quicksort :: Ord a => [a] -> [a]
 quicksort []     = []
 quicksort (p:xs) = (quicksort lesser) ++ [p] ++ (quicksort greater)
     where
-        lesser  = filter (< p) xs
-        greater = filter (>= p) xs
+        lesser  = Prelude.filter (< p) xs
+        greater = Prelude.filter (>= p) xs
 -- equationToList is a sorted list of the expressions that constitute
 -- the terms of an expression.
 -- The idea is that G^x^y^z should give [x,y,z]
 --              and G^z^y^x should give [x,y,z]
--- TODO this function relies on the assumption that
--- each equation contains exactly one G that sits at the base
--- of all the equations; we should typecheck that.
 equationToList :: [CanonExpr] -> CanonExpr -> [CanonExpr]
 equationToList acc c =
   case simplifyExpr c of
@@ -283,6 +327,14 @@ equationToList acc c =
 simplifyExpr' :: Bool -> CanonExpr -> CanonExpr
 simplifyExpr' skipPrimitive e = do
   case e of
+    CPrimitive (SPLIT (CPrimitive (CONCAT (hd:_)) _)) _
+      | not skipPrimitive -> simplifyExpr hd -- TODO is it correct to throw away the rest?
+    --CPrimitive (CONCAT [
+    --               CPrimitive (SPLIT
+    --                           (CPrimitive (CONCAT lst) _TODOhasq)
+    --                          ) _
+    --                   ]) hasq -> CPrimitive (CONCAT lst) hasq
+    -- TODO SHAMIR_JOIN(SHAMIR_SPLIT)
     -- UNBLIND(k, m, SIGN(a, BLIND(k, m))): SIGN(a, m)
     CPrimitive (UNBLIND k m (CPrimitive (SIGN a (CPrimitive (BLIND k2 m2) hasq'')) hasq')) hasq
       | not skipPrimitive -> do
@@ -329,6 +381,19 @@ simplifyExpr' skipPrimitive e = do
     -- TODO may need: CPrimitive ep hasq -> CPrimitive (mapPrimitiveP ep simplifyExpr) hasq
     CPrimitive p hq | skipPrimitive -> simplifyExpr' False (CPrimitive (mapPrimitiveP p (simplifyExpr)) hq)
     CPrimitive p hq -> CPrimitive p hq
+    CItem idx old_e -> do
+      let simple_e = simplifyExpr old_e
+          default_item = CItem idx simple_e
+          get_item lst = case Data.List.drop idx lst of
+                           [] -> default_item -- TODO this is a type error we should have caught earlier
+                           new_e:_ -> new_e
+      case old_e of
+        CPrimitive (SPLIT inner) _ -> do
+           let simple_inner = simplifyExpr inner
+           case simple_inner of
+             (CPrimitive (CONCAT lst) _) -> simplifyExpr (get_item lst)
+             _ -> default_item
+        _ -> default_item
     CG e -> CG (simplifyExpr' skipPrimitive e)
     (:^^:) a b -> (:^^:) (simplifyExpr a) (simplifyExpr b)
     e@(CConstant {}) -> e
@@ -352,8 +417,6 @@ equivalenceExpr' o_e1 o_e2 =
     -- TODO it might be a better strategy to have a "minimizeExpr" function to do
     -- these; then we could reuse that to e.g. display things to the user?
     --
-    -- Concat of a single value is equivalent to the value:
-    (e, CPrimitive (CONCAT [e']) _) | equivalenceExpr e e' -> True
     -- Decryption of encrypted plaintext is equivalent to plaintext.
     -- (encrypted) may not immediately be an ENC, so we need to recurse:
     -- TODO this is not covered by simplifyExpr ? commenting out the part below fails the equivalence3.vp test:
@@ -364,6 +427,9 @@ equivalenceExpr' o_e1 o_e2 =
       equivalenceExprs
         (equationToList [] a)
         (equationToList [] b)
+    (CItem n e, CItem n' e') -> n == n' && equivalenceExpr e e'
+    --
+    (CItem {}, _) -> False
     ((:^^:) {}, _) -> False
     (CPrimitive {}, _) -> False
     (CConstant {}, _ ) -> False
@@ -461,6 +527,7 @@ data CanonExpr
   | (:^^:) CanonExpr CanonExpr
   | CConstant Constant CanonKnowledge
   | CPrimitive (PrimitiveP CanonExpr) CheckedPrimitive
+  | CItem Int CanonExpr
   deriving (Eq, Ord, Show)
 data CanonKnowledge
   = CPrivate
@@ -475,6 +542,7 @@ canonicalizeExpr m orig_exp = do
     -- TODO we need special handling of G^y^x to G^x^y (sorted in order to check equivalence)
     G exp -> CG (self exp)
     (:^:) const exp -> (:^^:) (self (EConstant const)) (self exp)
+    EItem index exp -> CItem index (self exp)
     EConstant const ->
       case Map.lookup const m of
         Just Private -> CConstant const CPrivate
@@ -522,7 +590,7 @@ mapAccPrimitiveP aux prim f = do
               \(aux,acc) exp ->
                 let (aux',m1) = f aux exp in (aux',m1:acc)
               ) (aux,[]) exps
-        (aux2, constr (reverse args))
+        (aux2, constr (Prelude.reverse args))
       arity1 constr e1 =
         let (aux1, m1) = f aux e1
         in (aux1, constr m1)
@@ -578,6 +646,7 @@ foldConstantsInExpr :: acc -> Expr -> (Constant -> acc -> acc) -> acc
 foldConstantsInExpr acc o_exp f =
   let dolist = foldl (\acc exp -> foldConstantsInExpr acc exp f) acc in
   case o_exp of
+    EItem _TODOFIXME exp -> dolist [exp]
     G exp -> dolist [exp]
     (:^:) c exp -> foldConstantsInExpr (f c acc) exp f
     EConstant c -> f c acc
@@ -630,4 +699,4 @@ constantExistsOrError const = do
   seen <- getConstant const ;
   case seen of
     Just _ -> return ()
-    Nothing -> addError (MissingConstant const "TODO")
+    Nothing -> addError (MissingConstant const)

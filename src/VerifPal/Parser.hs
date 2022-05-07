@@ -12,6 +12,7 @@ import qualified Data.Text as Text
 import Text.Megaparsec
 import Text.Megaparsec.Char (digitChar)
 import Data.Void (Void)
+import Data.List.NonEmpty
 
 import VerifPal.Types
 
@@ -122,31 +123,32 @@ query = do
       symbol "precondition"
       QueryOption <$> brackets message
 
-statements :: Parser [(Constant, Knowledge)]
+statements :: Parser [(NonEmpty Constant, Knowledge)]
 statements = concat <$> many knowledge
 
-knowledge :: Parser [(Constant, Knowledge)]
+knowledge :: Parser [(Data.List.NonEmpty.NonEmpty Constant, Knowledge)]
 knowledge = choice [ knows, generates, leaks, assignment ]
   where
+    mkNElst cs = Data.List.NonEmpty.fromList cs -- (Prelude.reverse cs)
     knows = do
       symbol1 "knows"
       visibility <- publicPrivatePassword
       cs <- constant `sepBy1` comma
-      pure [ (c, visibility) | c <- cs ]
+      pure [ (mkNElst cs, visibility) ]
 
-    generates :: Parser [(Constant, Knowledge)]
+    generates :: Parser [(NonEmpty Constant, Knowledge)]
     generates = do
       symbol1 "generates"
       cs <- constant `sepBy1` comma
-      pure [ (c, Generates) | c <- cs ]
+      pure [ (mkNElst cs, Generates) ]
 
-    leaks :: Parser [(Constant, Knowledge)]
+    leaks :: Parser [(NonEmpty Constant, Knowledge)]
     leaks = do
       symbol1 "leaks"
       cs <- constant `sepBy1` comma
-      pure [ (c, Leaks) | c <- cs ]
+      pure [ (mkNElst cs, Leaks) ]
 
-    assignment :: Parser [(Constant, Knowledge)]
+    assignment :: Parser [(NonEmpty Constant, Knowledge)]
     assignment = do
       -- TODO what to do about split(), shamir_split() etc?
       -- it would be nice if we could keep track of arity of both input
@@ -155,7 +157,7 @@ knowledge = choice [ knows, generates, leaks, assignment ]
       cs <- constant `sepBy1` comma
       symbol "="
       e <- expr
-      pure [(head cs, Assignment e)]
+      pure [(mkNElst cs, Assignment e)]
 
 expr :: Parser Expr
 expr = choice [ g, primitive, constHat ]

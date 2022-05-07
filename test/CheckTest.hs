@@ -5,6 +5,7 @@ import Control.Monad
 --import Data.Char (chr, isHexDigit)
 --import Data.FileEmbed
 --import Data.Foldable (for_)
+import Data.List.NonEmpty (NonEmpty(..), NonEmpty)
 import Data.Map (fromList)
 --import qualified Data.Map as Map
 import Data.Text (Text,pack,unpack)
@@ -26,6 +27,9 @@ import qualified Data.Map as Map
 
 import Cases
 
+lhsConst :: Text -> NonEmpty Constant
+lhsConst name = (Data.List.NonEmpty.:|) (Constant name) []
+
 shouldNotFail :: ModelState -> Expectation
 shouldNotFail modelState =
   msErrors modelState `shouldBe` []
@@ -38,28 +42,34 @@ spec_parsePrincipal :: Spec
 spec_parsePrincipal = do
   describe "process" $ do
     it "validates data/alice1.vp" $
+      -- TODO does this use alice1model? or alice1.vp ? should it use parsePrincipal?
+      -- parsePrinciap alice1model >>= process ?
       process alice1modelast `shouldBe`
       ModelState {
           msPrincipalConstants = fromList [("Alice",fromList [(Constant {constantName = "a"},(Generates,3)),(Constant {constantName = "c0"},(Public,0)),(Constant {constantName = "c1"},(Public,1)),(Constant {constantName = "m1"},(Private,2)),              (Constant {constantName = "nil"},(Public,0))])],
           msProcessingCounter = 4,
-          msConstants = fromList [
-              (Constant {constantName = "a"},Generates),
-              (Constant {constantName = "c0"},Public),
-              (Constant {constantName = "c1"},Public),
-              (Constant {constantName = "m1"},Private),
-              (Constant {constantName = "nil"},Public)
+          msConstants = Map.fromList [
+              (Constant "a",Generates),
+              (Constant "c0",Public),
+              (Constant "c1",Public),
+              (Constant "m1",Private),
+              (Constant "nil",Public)
           ], msErrors = [], msQueryResults = []}
 
 shouldOverlapWith :: ModelState -> Constant -> Expectation
 shouldOverlapWith modelState constant =
-  msErrors modelState `shouldContain`
-    [OverlappingConstant constant "can't generate the same thing twice"]
+  msErrors modelState `shouldContain` [OverlappingConstant constant]
 
-shouldMissConstant :: ModelState -> (Text, Text) -> Expectation
-shouldMissConstant modelState (constantName, errorText) =
+shouldMissConstant :: ModelState -> Text -> Expectation
+shouldMissConstant modelState (constantName) =
   -- TODO this way of testing for the Text of the missingconstant is not great.
   msErrors modelState `shouldContain`
-    [MissingConstant (Constant constantName) errorText]
+    [MissingConstant (Constant constantName)]
+
+shouldFailValToVal :: ModelState -> Text -> Text -> Expectation
+shouldFailValToVal ms name1 name2 =
+  msErrors ms `shouldContain`
+    [ValueToValue (Constant name1) (Constant name2)]
 
 shouldHave :: ModelState -> (PrincipalName, [Constant]) -> IO ()
 shouldHave modelState (principalName, constants) =
@@ -73,7 +83,7 @@ shouldHaveEquivalence modelState wantedConstants =
   msQueryResults modelState `shouldSatisfy` any predicate
   where
     predicate (Query (EquivalenceQuery actualConstants) _queryOptions, True) =
-      actualConstants == map (\c -> Constant c) wantedConstants
+      actualConstants == Prelude.map (\c -> Constant c) wantedConstants
     predicate _ = False
 
 shouldHaveFresh :: ModelState -> Text -> Expectation
@@ -224,16 +234,16 @@ spec_process = do
       process bad_passwordprivate_ast `shouldOverlapWith` Constant "x"
 
     it "rejects model with missing constant in confidentialityquery" $
-      process bad_undefinedconstant_in_cfquery_ast `shouldMissConstant` ("y","TODO")
+      process bad_undefinedconstant_in_cfquery_ast `shouldMissConstant` ("y")
 
     it "rejects model that sends constant before it's defined" $ do
       let modelState = process bad_early_constant_ast
-      modelState `shouldMissConstant`("yo","sender reference to unknown constant")
+      modelState `shouldMissConstant`("yo")
 
     it "rejects model that references undefined constant" $ do
       let modelState = process bad_assignment_to_undefined_ast
       shouldFail modelState
-      modelState `shouldMissConstant` ("b","assignment to unbound constant")
+      modelState `shouldMissConstant` ("b")
 
 spec_freshness :: Spec
 spec_freshness = do
@@ -283,8 +293,8 @@ spec_equivalence = do
     it "checks equivalence3 query" $ do
       let modelState = process equivalence3_ast
       shouldNotFail modelState
-      modelState `shouldHaveEquivalence` ["a", "b"]
-      modelState `shouldHaveEquivalence` ["c", "d"]
+      modelState `shouldHaveEquivalence` ["r1", "msg1"]
+      modelState `shouldHaveEquivalence` ["r2", "msg2"]
     it "checks equivalence4 query" $ do
       let modelState = process equivalence4_ast
       shouldNotFail modelState
@@ -594,7 +604,7 @@ hprop_equationsAreEquivalent =
       -- the list should be structurally equivalent since we are dealing with
       -- CanonExpr which should be canonical:
 
-cexprHasFreshness :: CanonExpr -> Bool
+cexprHasFreshness :: CanonExpr -> (ModelState, Bool)
 cexprHasFreshness cexpr =
   let (mlst, decan) = decanonicalizeExpr [] cexpr
       const = Constant {constantName="howfresh"}
@@ -603,7 +613,14 @@ cexprHasFreshness cexpr =
         modelParts = [
             ModelPrincipal (Principal {
                                principalName="A",
-                               principalKnows=mlst++[(const, Assignment decan)]
+                               principalKnows=Prelude.map (
+                                   \(l,r) -> (
+                                     (Data.List.NonEmpty.:|) l [],r)) (
+                                   mlst++[(const,
+                                           case decan of -- direct aliasing is not permitted, so we work around the case where decan is simply a constant:
+                                             EConstant _ -> Assignment (G decan)
+                                             _ -> Assignment decan
+                                               )])
                                }),
             ModelQueries [
                 Query {
@@ -618,7 +635,7 @@ cexprHasFreshness cexpr =
       isFresh [(Query {}, result)] = result
       isFresh _ = False
       testResult = isFresh qr :: Bool
-  in testResult
+  in (ms, testResult)
 
 -- Test that we genCanonExpr will generate values with and without freshness
 hprop_hasFreshness :: Hedgehog.Property
@@ -626,14 +643,14 @@ hprop_hasFreshness =
   withDiscards 5000 $
   withTests 1000 $ verifiedTermination $ property $ do
     cexp <- forAll $ genCanonExpr
-    let res = cexprHasFreshness cexp
+    let (_, res) = cexprHasFreshness cexp
     if res then pure() else discard
 hprop_noFreshness :: Hedgehog.Property
 hprop_noFreshness =
   withDiscards 5000 $
   withTests 1000 $ verifiedTermination $ property $ do
     cexp <- forAll $ genCanonExpr
-    let res = cexprHasFreshness cexp
+    let (_, res) = cexprHasFreshness cexp
     if not res then pure() else discard
 
 hprop_fuzzFreshness :: Hedgehog.Property
@@ -652,9 +669,9 @@ hprop_fuzzFreshness =
     classify "guaranteed fresh" $ do_fresh == CGenerates
     classify "NOT guaranteed fresh" $ do_fresh /= CGenerates
     with_k <- forAll $ genCanonExprWithKnowledge do_fresh
-    let testResult = cexprHasFreshness with_k
-    --    annotateShow("ms"::Text, ms)
+    let (ms, testResult) = cexprHasFreshness with_k
         testProp = testResult === (CGenerates == do_fresh)
+    annotateShow("ms"::Text, ms)
     -- testProp:
     -- 1) should always be True if we put CGenerates in there
     -- 2) we didn't put CGenerates, and it didn't have freshness
