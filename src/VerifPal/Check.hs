@@ -436,8 +436,8 @@ equivalenceExpr' o_e1 o_e2 =
     (CG {}, _) -> False
 
 equivalenceExpr :: CanonExpr -> CanonExpr -> Bool
-equivalenceExpr e1 e2 = -- TODO cannot be bothered to do transformations both ways
-  equivalenceExpr' e1 e2 || equivalenceExpr' e2 e1
+equivalenceExpr e1 e2 =
+  equivalenceExpr' e1 e2
 
 equivalenceExprs :: [CanonExpr] -> [CanonExpr] -> Bool
 equivalenceExprs [] [] = True
@@ -581,6 +581,9 @@ decanonicalizeExpr m orig_exp = do
     CPrimitive p cp -> do
       let (m2, prim) = mapAccPrimitiveP m p (\m' pr -> decanonicalizeExpr m' pr)
       (m2, EPrimitive prim cp)
+    CItem idx cp -> do
+      let (m1,rhs) = (decanonicalizeExpr m cp)
+      (m1, (EItem idx rhs))
     --  CConstant const knowledge -> TODO have to put this in the knowledge map
 
 mapAccPrimitiveP :: aux -> PrimitiveP a -> (aux -> a -> (aux,b)) -> (aux, PrimitiveP b)

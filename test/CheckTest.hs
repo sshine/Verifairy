@@ -519,6 +519,16 @@ transformEquivalent exp = do
     pure exp] [
     more exp,
     do
+      Hedgehog.Gen.list (Hedgehog.Range.constant 0 3) genCanonExpr >>= \before ->
+        Hedgehog.Gen.list (Hedgehog.Range.constant 0 3) genCanonExpr >>= \after ->
+          more exp >>= \exp ->
+            more (CPrimitive (CONCAT (before ++ (exp:after))) HasntQuestionMark) >>= \concat ->
+              more (CItem (length before) (CPrimitive (SPLIT concat) HasntQuestionMark)),
+    do
+      more exp >>= \exp ->
+        more (CPrimitive (CONCAT [exp]) HasntQuestionMark) >>= \concat ->
+          more (CPrimitive (SPLIT concat) HasntQuestionMark),
+    do
       randpair >>= \(key1,key2) ->
         more exp >>= \exp ->
           more (CPrimitive (ENC key1 exp) HasntQuestionMark) >>= \enc ->
@@ -579,6 +589,15 @@ hprop_simplifyExprEquivalence =
         Hedgehog.diff eq1    equivalenceExpr simpl1
         Hedgehog.diff simpl1 equivalenceExpr eq1
       else pure ()
+
+hprop_equivalenceExprSymmetry :: Hedgehog.Property
+hprop_equivalenceExprSymmetry =
+  withTests 10000 $
+  property $
+  do
+    exp1 <- forAll $ genCanonExpr
+    exp2 <- forAll $ genCanonExpr
+    equivalenceExpr exp1 exp2 === equivalenceExpr exp2 exp1
 
 hprop_equationsAreEquivalent :: Hedgehog.Property
 hprop_equationsAreEquivalent =
