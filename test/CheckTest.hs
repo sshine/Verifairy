@@ -518,28 +518,29 @@ transformEquivalent exp = do
   Hedgehog.Gen.small $ Hedgehog.Gen.recursive Hedgehog.Gen.choice [
     pure exp] [
     more exp,
-    do
-      Hedgehog.Gen.list (Hedgehog.Range.constant 0 3) genCanonExpr >>= \before ->
-        Hedgehog.Gen.list (Hedgehog.Range.constant 0 3) genCanonExpr >>= \after ->
+    do -- indices into SPLIT(CONCAT)
+      Hedgehog.Gen.list (Hedgehog.Range.constant 0 2) genCanonExpr >>= \before ->
+        Hedgehog.Gen.list (Hedgehog.Range.constant 0 2) genCanonExpr >>= \after ->
           more exp >>= \exp ->
             more (CPrimitive (CONCAT (before ++ (exp:after))) HasntQuestionMark) >>= \concat ->
               more (CItem (length before) (CPrimitive (SPLIT concat) HasntQuestionMark)),
-    do
-      more exp >>= \exp ->
-        more (CPrimitive (CONCAT [exp]) HasntQuestionMark) >>= \concat ->
-          more (CPrimitive (SPLIT concat) HasntQuestionMark),
+    do -- SPLIT(CONCAT()) without indices; defaulting to first element
+      Hedgehog.Gen.list (Hedgehog.Range.constant 0 2) genCanonExpr >>= \after ->
+        more exp >>= \exp ->
+          more (CPrimitive (CONCAT (exp:after)) HasntQuestionMark) >>= \concat ->
+            more (CPrimitive (SPLIT concat) HasntQuestionMark),
     do
       randpair >>= \(key1,key2) ->
         more exp >>= \exp ->
           more (CPrimitive (ENC key1 exp) HasntQuestionMark) >>= \enc ->
             more (CPrimitive (DEC key2 enc) HasntQuestionMark),
-    do
+    do -- AEAD_DEC(AEAD_ENC())
       randpair >>= \(key1,key2) ->
         more exp >>= \exp1 ->
           randpair >>= \(ad1,ad2) ->
             more (CPrimitive (AEAD_ENC key1 exp1 ad1) HasntQuestionMark) >>= \enc ->
                 more (CPrimitive (AEAD_DEC key2 enc ad2) HasntQuestionMark),
-    do
+    do -- SIGNVERIF(SIGN())
       randpair >>= \(key1,key2) ->
         pair exp >>= \(exp1,exp2) ->
           more (CPrimitive (SIGN key1 exp1) HasntQuestionMark) >>= \signed ->
