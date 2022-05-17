@@ -12,16 +12,19 @@ import Options.Applicative
 import Prettyprinter.Render.Terminal (putDoc)
 import System.Exit (exitFailure)
 import System.IO (stderr)
-import VerifPal.Check (ModelState (..), process, CanonExpr, canonicalizeExpr, simplifyExpr)
+import VerifPal.Check (ModelState (..), process, canonicalizeExpr, simplifyExpr)
 import VerifPal.Parser (parseModel)
-import VerifPal.Pretty (myAnnotate, prettifyModelState, prettifyCanonExpr,colorYellow, prettifyConfidentialityGraph)
+import VerifPal.Pretty (myAnnotate, prettifyModelState, prettifyCanonExpr,colorYellow)--, prettifyConfidentialityGraph)
 import VerifPal.Version (gitBuildInfo)
-import VerifPal.Types (Knowledge(..), Constant(..), Expr(..))
-import Data.Map(lookup)
+import VerifPal.Types (Constant(..), Expr(..))
+import Data.Map() --lookup)
+import Text.Show.Pretty (ppDoc)
 import Data.GraphViz
 import Data.Graph.Inductive.PatriciaTree
 import Data.Graph.Inductive.Graph (OrdGr(..) , Node)
 import Data.GraphViz.Printing
+import Data.GraphViz.Attributes.Complete(Justification(JLeft),Attribute(..))
+
 data Args = Args
   { srcFile :: FilePath,
     simplify :: String,
@@ -83,12 +86,13 @@ argsHandler Args {srcFile = srcFile, simplify=simplify, dotFile=dotFile, verbose
       unless (null (msErrors ms)) exitFailure
       unless (all snd (msQueryResults ms)) exitFailure
 
-mytoDot :: Data.Graph.Inductive.Graph.OrdGr Data.Graph.Inductive.PatriciaTree.Gr a b -> Text
+mytoDot :: Show a => Show b => Data.Graph.Inductive.Graph.OrdGr Data.Graph.Inductive.PatriciaTree.Gr a b -> Text
 mytoDot g =
   -- nodeAttrs :: (Node, Link) -> Attributes
-  let nodeAttrs (a,_) =
-        [ toLabel . Text.pack . show $ a
-        , shape Circle
+  let nodeAttrs (a,label) = -- fmtNode= \(_,label)-> [Label (StrLabel (L.pack label))]
+        [ toLabel . Text.pack . show $ ppDoc $ label
+        , shape BoxShape
+        , LabelJust JLeft
         , colors !! a
         --, bgColor [colors !! a]
         --fillColor [colors !! a]
@@ -107,7 +111,16 @@ mytoDot g =
                                    ]
       dotgraph :: DotGraph Data.Graph.Inductive.Graph.Node
       dotgraph = case g of
-        Data.Graph.Inductive.Graph.OrdGr g -> graphToDot (nonClusteredParams { fmtNode = nodeAttrs }) g
+        Data.Graph.Inductive.Graph.OrdGr g ->
+          graphToDot (nonClusteredParams {
+                         fmtNode = nodeAttrs
+                         , globalAttributes = [
+                             NodeAttrs [
+                                 shape BoxShape
+                                 , LabelJust JLeft -- not JCenter
+                                       ]
+                                            ]
+                         }) g
       out :: Text
       out = Text.pack $ show $ runDotCode $ toDot dotgraph
   in out

@@ -6,12 +6,18 @@ principal A [
   sasa = HASH(sa,sa)
   sapa = HASH(sasa,pa)
   leaks sasa
-  leaks sapa
+  sasa2 = HASH(sa,sa)
+  sasa3 = HASH(sa,sa,sa)
+  papa = HASH(pa,pa)
+  sasa4 = HASH(sasa2, papa)
 ]
 
 queries [
-  confidentiality? sa
-  confidentiality? pa
-  confidentiality? sasa
-  confidentiality? sapa
+  confidentiality? sa   // yes
+  confidentiality? pa   // no, public
+  confidentiality? sasa // no, leaked
+  confidentiality? sapa // no, because sasa:leaked and pa:public
+  confidentiality? sasa2 // no, equivalent to sasa
+  confidentiality? sasa3 // yes
+  confidentiality? sasa4 // no, reconstructed using sasa:leaks and pa:public
 ]

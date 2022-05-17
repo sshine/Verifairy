@@ -128,6 +128,11 @@ confidentiality2 = $(embedStringFile "data/confidentiality2.vp")
 confidentiality2_ast :: Model
 confidentiality2_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "B", principalKnows = [(mkc "x",Private),(mkc "z",Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "x"})]) HasntQuestionMark)),(mkc "z",Leaks),(mkc "a",Private),(mkc "b",Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "a"})]) HasntQuestionMark)),(mkc "a",Leaks)]}),ModelQueries [Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "x"}}, queryOptions = Nothing},Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "z"}}, queryOptions = Nothing},Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "a"}}, queryOptions = Nothing},Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "b"}}, queryOptions = Nothing}]]}
 
+confidentiality3 :: Text
+confidentiality3 = $(embedStringFile "data/confidentiality3.vp")
+confidentiality3_ast :: Model
+confidentiality3_ast = assertParseModel confidentiality3
+
 simple1_complete_passive :: Text
 simple1_complete_passive = $(embedStringFile "data/simple1_complete_passive.vp")
 

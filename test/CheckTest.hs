@@ -367,10 +367,31 @@ spec_confidentiality = do
     it "checks confidentiality1 query" $ do
       let modelState = process confidentiality1_ast
       shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "q"
       modelState `shouldHaveConfidentiality` "w"
+      modelState `shouldNotHaveConfidentiality` "e"
+      modelState `shouldHaveConfidentiality` "r"
+      modelState `shouldNotHaveConfidentiality` "t"
+      modelState `shouldHaveConfidentiality` "u"
+      modelState `shouldNotHaveConfidentiality` "i"
+      modelState `shouldNotHaveConfidentiality` "o"
     it "checks confidentiality2 query" $ do
       let modelState = process confidentiality2_ast
       shouldNotFail modelState
+      modelState `shouldHaveConfidentiality` "x"
+      modelState `shouldNotHaveConfidentiality` "z"
+      modelState `shouldNotHaveConfidentiality` "a"
+      modelState `shouldNotHaveConfidentiality` "b"
+    it "checks confidentiality3 query" $ do
+      let modelState = process confidentiality3_ast
+      shouldNotFail modelState
+      modelState `shouldHaveConfidentiality` "sa"
+      modelState `shouldNotHaveConfidentiality` "pa"
+      modelState `shouldNotHaveConfidentiality` "sasa"
+      modelState `shouldNotHaveConfidentiality` "sapa"
+      modelState `shouldNotHaveConfidentiality` "sasa2"
+      modelState `shouldHaveConfidentiality` "sasa3"
+      modelState `shouldNotHaveConfidentiality` "sasa4"
 
 genKnowledge :: MonadGen m => m CanonKnowledge
 genKnowledge =
@@ -661,10 +682,10 @@ hprop_equationsAreEquivalent =
       -- the list should be structurally equivalent since we are dealing with
       -- CanonExpr which should be canonical:
 
-cexprHasFreshness :: CanonExpr -> (ModelState, Bool)
-cexprHasFreshness cexpr =
+buildModelState :: CanonExpr -> (Constant, Model)
+buildModelState cexpr = do
   let (mlst, decan) = decanonicalizeExpr [] cexpr
-      const = Constant {constantName="howfresh"}
+      const = Constant {constantName="outer"}
       model = Model {
         modelAttacker = Passive,
         modelParts = [
@@ -678,21 +699,27 @@ cexprHasFreshness cexpr =
                                              EConstant _ -> Assignment (G decan)
                                              _ -> Assignment decan
                                                )])
-                               }),
-            ModelQueries [
-                Query {
+                               })
+            ]
+        }
+  (const, model)
+
+
+cexprHasFreshness :: CanonExpr -> (ModelState, Bool)
+cexprHasFreshness cexpr = do
+  let (const, modelX) = buildModelState cexpr
+      model = modelX{modelParts=(modelParts modelX) ++ [
+                ModelQueries [ Query {
                     queryKind = FreshnessQuery { freshnessConstant = const },
                     queryOptions = Nothing
                     }
-                ]
-            ]
-        }
+                ]]}
       ms = process model
       qr = msQueryResults ms
       isFresh [(Query {}, result)] = result
       isFresh _ = False
       testResult = isFresh qr :: Bool
-  in (ms, testResult)
+  (ms, testResult)
 
 -- Test that we genCanonExpr will generate values with and without freshness
 hprop_hasFreshness :: Hedgehog.Property
@@ -738,3 +765,40 @@ hprop_fuzzFreshness =
       else do
         -- throw away Freshness==True when we did not gen explicit CGenerates:
         discard
+
+hprop_fuzzConfidentiality :: Hedgehog.Property
+hprop_fuzzConfidentiality =
+  withTests 1000 $ verifiedTermination $ property $ do
+  c_expr <- forAll genCanonExpr
+  annotateShow("expr"::Text, c_expr)
+  -- TODO it would be great to partition msConstants / msPrincipalConstants
+  -- into sets where equivalenceExpr holds, and add ConfidentialityQuery entries
+  -- for those constants to test that
+  --   equivalence? a,b --> confidentiality? a === confidentiality? b
+  -- TODO another nice test would be to leak/send(in a message) all the other constants;
+  --      any Assignment draws its confidentiality from a 'knows' or 'generates' stanza
+  --      so it should be possible to break confidentiality by leaking those.
+  let (const, modelA) = buildModelState c_expr
+      model = modelA{
+        modelParts=(modelParts modelA) ++ [
+            ModelQueries [
+                Query {
+                    queryKind = ConfidentialityQuery const,
+                      queryOptions = Nothing
+                    }
+                ]
+            ]
+        }
+  annotateShow("model"::Text, model)
+  let ms = process model
+      isConf [(Query {queryKind=ConfidentialityQuery {}}, result)] = result
+      isConf _ = False
+      testResult = isConf (msQueryResults ms)
+      hasErrors = (msErrors ms /= [])
+  classify "errors" hasErrors
+  annotateShow("ms"::Text, ms)
+  if hasErrors
+    then pure ()
+    else do
+    classify "confidentiality?" (testResult)
+    pure ()
