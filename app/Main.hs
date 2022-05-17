@@ -14,14 +14,18 @@ import System.Exit (exitFailure)
 import System.IO (stderr)
 import VerifPal.Check (ModelState (..), process, CanonExpr, canonicalizeExpr, simplifyExpr)
 import VerifPal.Parser (parseModel)
-import VerifPal.Pretty (myAnnotate, prettifyModelState, prettifyCanonExpr,colorYellow)
+import VerifPal.Pretty (myAnnotate, prettifyModelState, prettifyCanonExpr,colorYellow, prettifyConfidentialityGraph)
 import VerifPal.Version (gitBuildInfo)
 import VerifPal.Types (Knowledge(..), Constant(..), Expr(..))
 import Data.Map(lookup)
-
+import Data.GraphViz
+import Data.Graph.Inductive.PatriciaTree
+import Data.Graph.Inductive.Graph (OrdGr(..) , Node)
+import Data.GraphViz.Printing
 data Args = Args
   { srcFile :: FilePath,
     simplify :: String,
+    dotFile :: String,
     verbose :: Bool
   }
   deriving (Show)
@@ -30,7 +34,7 @@ main :: IO ()
 main = runArgsParser >>= argsHandler
 
 argsHandler :: Args -> IO ()
-argsHandler Args {srcFile = srcFile, simplify=simplify, verbose = verbose} = do
+argsHandler Args {srcFile = srcFile, simplify=simplify, dotFile=dotFile, verbose = verbose} = do
   srcText <- Text.readFile srcFile
   case parseModel srcText of
     Left bundle ->
@@ -63,6 +67,13 @@ argsHandler Args {srcFile = srcFile, simplify=simplify, verbose = verbose} = do
         do putStrLn ""
            putDoc (prettifyModelState ms)
            putStrLn ""
+      --
+      --putStrLn ""
+      --putDoc (prettifyConfidentialityGraph (msConfidentialityGraph ms))
+      --putStrLn ""
+      --
+      unless (dotFile == "") $
+        do Text.writeFile dotFile $ mytoDot (msConfidentialityGraph ms)
       -- TODO should make a Diagnostic here for each of these:
       traverse_ print (reverse $ msErrors ms)
       msQueryResults ms & map myAnnotate & for_ $ \annotated -> do
@@ -72,11 +83,40 @@ argsHandler Args {srcFile = srcFile, simplify=simplify, verbose = verbose} = do
       unless (null (msErrors ms)) exitFailure
       unless (all snd (msQueryResults ms)) exitFailure
 
+mytoDot :: Data.Graph.Inductive.Graph.OrdGr Data.Graph.Inductive.PatriciaTree.Gr a b -> Text
+mytoDot g =
+  -- nodeAttrs :: (Node, Link) -> Attributes
+  let nodeAttrs (a,_) =
+        [ toLabel . Text.pack . show $ a
+        , shape Circle
+        , colors !! a
+        --, bgColor [colors !! a]
+        --fillColor [colors !! a]
+        --, Style [SItem filled []]
+        ]
+      colors = cycle $ map bgColor [ LightBlue
+                                   , Red
+                                   , Orange
+                                   , Yellow
+                                   , Green
+                                   , Blue
+                                   , Purple
+                                   , Brown
+                                   , Pink
+                                   , Gray
+                                   ]
+      dotgraph :: DotGraph Data.Graph.Inductive.Graph.Node
+      dotgraph = case g of
+        Data.Graph.Inductive.Graph.OrdGr g -> graphToDot (nonClusteredParams { fmtNode = nodeAttrs }) g
+      out :: Text
+      out = Text.pack $ show $ runDotCode $ toDot dotgraph
+  in out
+
 runArgsParser :: IO Args
 runArgsParser = customExecParser (prefs showHelpOnError) argsParserInfo
 
 argsParserInfo :: ParserInfo Args
-argsParserInfo =
+argsParserInfo =      
   info (helper <*> argsParser) . mconcat $
     [ fullDesc,
       header ("verifairy " <> gitBuildInfo),
@@ -84,10 +124,11 @@ argsParserInfo =
     ]
 
 argsParser :: Parser Args
-argsParser = Args <$> srcFileParser <*> simplify <*>verbose
+argsParser = Args <$> srcFileParser <*> simplify <*> dotFile <*>verbose
   where
     verbose = flag False True . mconcat $ [ short 'v' ]
     simplify = option str (long "simplify-constant" <> short 's' <> value "")
+    dotFile = option str (long "dot-file" <> value "")
     srcFileParser =
       strArgument . mconcat $
         [ metavar "<FILE.vp>"

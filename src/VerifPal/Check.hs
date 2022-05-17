@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module VerifPal.Check where
 
@@ -14,8 +15,15 @@ import Data.Text (Text)
 import Data.Graph.Inductive
 import Data.List
 import Data.List.NonEmpty
+import Data.Set (Set)
+import qualified Data.Set as Set
+import Debug.Trace
 
---import Data.Graph.Inductive.Graph (mkGraph, LNode, LEdge, OrdGr, DynGraph, empty, Graph)
+import Data.Graph.Inductive.Graph (mkGraph, LNode, LEdge, OrdGr, DynGraph(..), empty, Graph, gfiltermap)
+import Data.Graph.Inductive.Basic (elfilter)
+import Data.Graph.Inductive.NodeMap (fromGraph,NodeMap(..))
+import Data.Graph.Inductive.Query.SP
+
 --import Data.Graph.Inductive.PatriciaTree
 import Data.Graph.Inductive.Query.TransClos
 
@@ -41,9 +49,21 @@ data ModelState = ModelState
   , msProcessingCounter  :: ProcessingCounter
   , msErrors             :: [ModelError]
   , msQueryResults       :: [(Query, Bool)]
+  , msConfidentialityGraph :: OrdGr Gr CanonExpr (Set (Set CanonExpr))
   } deriving (Eq, Ord, Show)
 
 type ProcessingCounter = Int
+
+data PT = PT (Int,(Set (Set CanonExpr))) deriving (Show,Eq,Ord)
+instance Real PT where
+  toRational (PT (t,_s)) = toRational (toInteger t)
+instance Num PT where
+    (PT (x,s)) + (PT (y,s')) = PT (x + y, s)
+    --(PT (x,s)) - (PT (y,s')) = PT (x + y, Set.union s s')
+    negate (PT (x,s)) = PT (negate x, s)
+    --(PT (x,_)) * (PT (y,s)) = PT (x*y,s)
+    abs (PT (x,s)) = PT (abs x, s)
+    fromInteger t = PT (fromInteger t, Set.empty)
 
 -- Everyone knows the magic constant "nil" TODO reference manual?
 emptyConstantMap :: Map Constant Knowledge
@@ -62,41 +82,139 @@ emptyModelState = ModelState
   , msProcessingCounter = 0
   , msErrors = []
   , msQueryResults = []
+  , msConfidentialityGraph = OrdGr (mkGraph [] [])
   }
 
 type EvalM a = State ModelState a
 
--- TODO: Check if constants are unique
--- TODO: Check if a given variable is fresh
+-- https://hackage.haskell.org/package/containers-0.6.5.1/docs/Data-Set.html
+--
+--  Nodes: CanonExpr
+--    -- unlocked by: Set of Set of CanonExpr
+--  Or   Set CanonExpr -/      |
+--  And  Set CanonExpr --------/
+--
+-- Foreach principal we make a CanonExpr Constant PrincipalName"_Knows"
+--   and then filter the edges
+--      removing Set elements not known to principal
+--        equivalentExpr in principalKnowledge
+--      removing edges where the set is empty
+--   once edges are removed, the remaining paths should lead to expressions
+--   that can be reached by the principal, so foreach of those
+--     add edge directly from principal to this
+--   repeat if number of nodes is different from loop beginning
 
-buildKnowledgeGraph :: ModelState -> Bool
-buildKnowledgeGraph m =
-  let vertices = [] :: [(Node, Int)]
-      edges = []  :: [LEdge Int]
-      g = mkGraph (vertices) (edges) :: Gr Int Int
-      -- compute transitive reflexive closure aka compute reachability for each vertice pair:
-      gtrc = Data.Graph.Inductive.Query.TransClos.trc g
-      -- shortest path: Data.Graph.Inductive.Query.SP
-  in
-    True
+buildKnowledgeGraph :: ModelState -> NodeMapM CanonExpr (Set (Set CanonExpr)) Gr ()
+buildKnowledgeGraph ms = do
+  --let -- compute transitive reflexive closure aka compute reachability for each vertice pair:
+  --gtrc = Data.Graph.Inductive.Query.TransClos.trc g
+  -- shortest path: Data.Graph.Inductive.Query.SP
+  let nil = CConstant (Constant "nil") CPublic
+  insMapNodeM nil
+  let edge_always = Set.singleton $ Set.empty -- 'OR(AND())' always matches
+      constmap = msConstants ms
+      foldCanonExpr :: CanonExpr -> NodeMapM CanonExpr (Set (Set CanonExpr)) Gr CanonExpr
+      foldCanonExpr c_expr = do
+        insMapNodeM c_expr
+        let simpl = simplifyExpr c_expr
+        unless (simpl == c_expr) $ do
+          insMapNodeM simpl
+          -- learn simpl by knowing c_expr
+          insMapEdgeM (c_expr,simpl, edge_always)
+        case c_expr of
+          CPrimitive (ENC key msg) _ -> do
+            insMapNodeM key
+            insMapNodeM msg
+            foldCanonExpr key
+            foldCanonExpr msg
+            -- learn msg by knowing ENC(key,msg) & key
+            insMapEdgeM (c_expr,msg,(Set.singleton $ Set.fromList [c_expr,key]))
+            -- learn c_expr by knowing key & msg
+            insMapEdgeM (key,c_expr,(Set.singleton $ Set.fromList [msg]))
+            pure simpl
+          CPrimitive (CONCAT lst) _ -> do
+            foo <- foldM (\acc exp -> do
+                             x <- foldCanonExpr exp
+                             -- knowing CONCAT(x,..) leads to knowing x,..
+                             insMapEdgeM (simpl,x, edge_always)
+                             pure (x:acc)
+                         ) [] lst
+            case foo of
+              x:xs -> do
+                -- knowing x leads to simple if you also know xs
+                insMapEdgeM (x,simpl, Set.singleton $ (Set.fromList xs))
+                pure simpl
+              [] -> do
+                insMapEdgeM (nil,simpl, edge_always)
+                pure simpl
+            pure simpl            
+          CPrimitive (HASH lst) _ -> do
+            foo <- foldM (\acc exp -> do
+                             x <- foldCanonExpr exp
+                             pure (x:acc)
+                         ) [] lst
+            case foo of
+              x:xs -> do
+                -- knowing x leads to simple if you also know xs
+                insMapEdgeM (x,simpl, Set.singleton $ (Set.fromList xs))
+                pure simpl
+              [] -> do
+                insMapEdgeM (nil,simpl, edge_always)
+                pure simpl
+            pure simpl
+          CConstant _ CPublic -> do
+            -- attacker knows this because it's public
+            insMapEdgeM (nil, simpl, edge_always)
+            pure simpl
+          _ -> pure simpl
+  foldM (\st (const,knowledge) -> do
+            --insMapNodeM (knowledge)
+            let c_expr = canonicalizeExpr constmap (EConstant const)
+            foldCanonExpr c_expr
+            --  CConstant c2 _knowl -> insMapNodeM c2
+            --  CPrimitive (ENC key msg) _ ->
+            --   foldConstantsInExpr
+            --  _ -> insMapNodeM const
+            --case knowledge of
+            --  Ass
+            --insMapEdgeM (const,const,c_expr)
+            pure st
+        ) () (Map.assocs constmap)
+  foldM (\() (principalName, principalMap) -> do
+            let cprName = CConstant (Constant principalName) CPrivate
+            insMapNodeM cprName
+            foldM (\() (c,h) -> do
+                      let c_expr = canonicalizeExpr constmap (EConstant c)
+                      --insMapNodeM c_expr
+                      insMapEdgeM (cprName,c_expr,edge_always)
+                      pure ()
+                  ) () $ Map.assocs principalMap
+            pure () ) () $ Map.assocs $ msPrincipalConstants ms
+
 process :: Model -> ModelState
-process model = do
-  let m = execState (processM model) emptyModelState
-      _ = buildKnowledgeGraph m
-  m
+process model =
+  execState (processM model) emptyModelState
 
 processM :: Model -> State ModelState ()
-processM Model{..} =
+processM Model{..} = do
   mapM_ processModelPart modelParts
 
 processModelPart :: ModelPart -> State ModelState ()
 processModelPart (ModelPrincipal (Principal name knows)) = do
   mapM_ (processKnowledge name) knows
 processModelPart (ModelQueries qs) = do
+  -- ModelQueries should be the last ModelPart, so we should be safe to compute
+  -- the graph of what the attacker can reach:
+  errors <- gets msErrors
+  unless ((/=) errors ([]::[ModelError])) $ do
+    modify $ \state -> do
+      let (nodemap,gr) = execState (buildKnowledgeGraph state) (new,mkGraph [] [])
+      state { msConfidentialityGraph = OrdGr gr }
+    mapM_ processQuery qs
   -- TODO if the user wrote the same query twice
   -- we should collapse them to a single query
   -- and probably issue a warning?
-  mapM_ processQuery qs
+  
 
 processModelPart (ModelMessage (Message sender receiver consts)) = do
   forM_ consts $ \(cconst,_TODO_cguard) -> do
@@ -163,24 +281,29 @@ processKnowledge principalName (constants, knowledge) = do
       else do
         existingConstant <- getConstant constant
         case existingConstant of
-          Nothing -> pure ()
-          -- TODO cannot be "leaks"
-          Just Password -> pure ()
-          Just Private -> pure ()
-          Just Public -> pure ()
-          Just Generates -> addError (OverlappingConstant constant)
-          Just (Assignment {}) -> addError (OverlappingConstant constant)
+          Nothing ->
+            if knowledge == Leaks
+            then addError (MissingConstant constant)
+            else pure ()
+          Just e_k ->
+            if canOverlap knowledge
+            then pure()
+            else addError (OverlappingConstant constant)
     ) () constants
   let addThem () = foldM_ (
         \() constant -> do
           existingConstant <- getConstant constant
-          case (existingConstant, knowledge) of
-            (Nothing, _) -> addConstant principalName constant knowledge
+          case (existingConstant, knowledge, canOverlap knowledge) of
+            (Nothing, Leaks, _) ->
+              addError (MissingConstant constant)
+            (Nothing, _, _) | knowledge /= Leaks -> addConstant principalName constant knowledge
             -- principal A [ knows public x ] principal B [ knows public X ]
-            (Just Public, Public) -> upsertPrincipalConstant principalName constant knowledge
-            (Just Private, Private) -> upsertPrincipalConstant principalName constant knowledge
-            (Just Password, Password) -> upsertPrincipalConstant principalName constant knowledge
-            (Just _, _) -> addError (OverlappingConstant constant)
+            (Just existing, Leaks, _) ->
+              upsertPrincipalConstant "attacker" constant existing
+            (Just oldknowledge, _, True)
+              | oldknowledge == knowledge ->
+                upsertPrincipalConstant principalName constant knowledge
+            (Just _, _, _) -> addError (OverlappingConstant constant)
         ) () constants
   case knowledge of
     Assignment (EConstant rhs) -> addError $ ValueToValue (Data.List.NonEmpty.head constants) rhs
@@ -189,29 +312,94 @@ processKnowledge principalName (constants, knowledge) = do
     Private -> addThem ()
     Password -> addThem ()
     Generates -> addThem ()
-    Leaks -> pure () -- TODO add to attacker principal modifyConstant principalName constant Leaks
+    Leaks -> addThem ()
 
 processQuery :: Query -> State ModelState ()
-processQuery query@(Query (FreshnessQuery constant) queryOptions) = do
+processQuery query@(Query (FreshnessQuery constant) _TODO_queryOptions) = do
   constantExistsOrError constant
   cs <- gets msConstants ;
   addQueryResult query $ mapConstants False constant (
     \c a -> a || Just Generates == Map.lookup c cs) cs
 
-processQuery (Query (ConfidentialityQuery constant) queryOptions) = do
+processQuery query@(Query (ConfidentialityQuery constant) _TODO_queryOptions) = do
   constantExistsOrError constant
-  addError (NotImplemented "confidentiality query not implemented") -- FIXME
+  g <- gets msConfidentialityGraph
+  let g' = elfilter (\ssc -> True) (unOrdGr g)
+  pure ()
+  let trc = Data.Graph.Inductive.Query.TransClos.trc (unOrdGr g)
+  -- nm = Data.Graph.Inductive.NodeMap.fromGraph (unOrdGr g)
+  constmap <- gets msConstants
+  let mf :: Context CanonExpr (Set (Set CanonExpr)) -> MContext CanonExpr PT
+      mf = (\foo@(b_in,a,c,b_out) -> do
+               -- Debug.Trace.traceShow foo $ pure ()
+               let b_in' :: Adj PT
+                   b_in' = Data.List.map (\(s,n) -> (PT (1,s),n)) b_in
+                   b_out' :: Adj PT
+                   b_out' = Data.List.map (\(s,n) -> (PT (1,s),n)) b_out
+                   ret :: MContext CanonExpr PT
+                   ret = Just (b_in',a,c,b_out')
+               ret
+           )
+      rg :: Gr CanonExpr PT
+      rg = gfiltermap mf (unOrdGr g)
+  --let rg = emap (\w -> 1) trc
+  -- Basic.elfilter
+  let attackerL = labfilter ((==) (CConstant (Constant "attacker") CPrivate)) (unOrdGr g)
+      attacker = case nodes attackerL of
+        [n] -> n
+  case Data.Graph.Inductive.Query.SP.spTree attacker rg of
+    [] -> addQueryResult query True
+    paths -> do
+      let attackerSetOrigin = Set.empty
+          foldPaths :: Set CanonExpr -> Set CanonExpr
+          foldPaths aso = foldl inner2 (aso) (Data.List.reverse paths)
+          inner1 :: (Bool, Set CanonExpr) -> (Node, PT) -> (Bool, Set CanonExpr)
+          inner1 (sofar, thisSet) (node, PT (_, preconditions)) = do
+            if not sofar
+              then (sofar,thisSet)
+              else do
+              let canGet = foldl (\acc required -> acc || null (Set.difference required thisSet) || foldl (\acc ce -> acc && foldl (\acc2 ae -> acc2 || equivalenceExpr ce ae) False thisSet) True required ) False preconditions
+                  c_expr = case lab (unOrdGr g) $ node of
+                             Just e -> e
+              if canGet
+                then do
+                --let res :: (Bool, Set CanonExpr)
+                --    res = pure (True, Set.insert (simplifyExpr c_expr) $ (Set.insert c_expr) thisSet)
+                let res = (Set.insert (simplifyExpr c_expr) $ (Set.insert c_expr thisSet))
+                if Set.member c_expr thisSet
+                  then (True, res) -- already know this
+                  else do
+                  let res2 = Debug.Trace.traceShow (c_expr) $ res
+                  (True, res2) --Debug.Trace.traceShow (c_expr) $ res
+                else (False, thisSet) -- attacker can't reach this
+          inner2 :: Set CanonExpr -> LPath PT -> Set CanonExpr
+          inner2 attackerSet path = snd (foldl inner1 (True,attackerSet) (unLPath path)) -- (Data.List.reverse ))
+          news = foldPaths attackerSetOrigin
+      let canon_constant :: CanonExpr
+          canon_constant = simplifyExpr $ canonicalizeExpr constmap (EConstant (constant))
+          todo_news :: Set CanonExpr
+          todo_news = while_new news
+          while_new :: Set CanonExpr -> Set CanonExpr
+          while_new old =
+            let newer = foldPaths old in
+            if old == newer
+            then old
+            else while_new newer
+      _ <- Debug.Trace.traceShow todo_news $ pure ()
+      let attacker_knows = foldl (\knows cexpr -> knows || equivalenceExpr cexpr canon_constant) False todo_news
+      addQueryResult query (not attacker_knows)
+  pure ()
 
-processQuery (Query (UnlinkabilityQuery consts) queryOptions) = do
-  forM_ consts $ \cconst -> do constantExistsOrError cconst
+processQuery (Query (UnlinkabilityQuery consts) _TODO_queryOptions) = do
+  forM_ consts $ \cconst -> constantExistsOrError cconst
   addError (NotImplemented "unlinkability query not implemented") -- FIXME
 
-processQuery (Query (AuthenticationQuery msg) queryOptions) = do
+processQuery (Query (AuthenticationQuery _msg) _TODO_queryOptions) = do
   addError (NotImplemented "authentication query not implemented") -- FIXME
 
 processQuery (Query (EquivalenceQuery []) _queryOptions) = pure ()
 
-processQuery query@(Query (EquivalenceQuery consts@(c1:cs)) queryOptions) = do
+processQuery query@(Query (EquivalenceQuery consts@(c1:_)) _TODO_queryOptions) = do
   forM_ consts $ \cconst -> do
     constantExistsOrError cconst
   constmap <- gets msConstants ;
@@ -534,7 +722,7 @@ data CanonKnowledge
   | CPublic
   | CGenerates
   | CPassword
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Enum)
 canonicalizeExpr :: Map Constant Knowledge -> Expr -> CanonExpr
 canonicalizeExpr m orig_exp = do
   let self = canonicalizeExpr m
@@ -649,7 +837,7 @@ foldConstantsInExpr :: acc -> Expr -> (Constant -> acc -> acc) -> acc
 foldConstantsInExpr acc o_exp f =
   let dolist = foldl (\acc exp -> foldConstantsInExpr acc exp f) acc in
   case o_exp of
-    EItem _TODOFIXME exp -> dolist [exp]
+    EItem _TODOFIXME exp -> dolist [exp] -- TODO we need testcases that hit this path
     G exp -> dolist [exp]
     (:^:) c exp -> foldConstantsInExpr (f c acc) exp f
     EConstant c -> f c acc

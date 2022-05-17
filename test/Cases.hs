@@ -126,7 +126,7 @@ confidentiality1_ast = assertParseModel confidentiality1
 confidentiality2 :: Text
 confidentiality2 = $(embedStringFile "data/confidentiality2.vp")
 confidentiality2_ast :: Model
-confidentiality2_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "B", principalKnows = [(mkc "x",Private),(mkc "z",Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "x"})]) HasntQuestionMark)),(mkc "z",Leaks),(mkc "a",Private),(mkc "b",Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "a"})]) HasntQuestionMark)),(mkc "a",Leaks)]}),ModelQueries [Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "x"}}, queryOptions = Nothing},Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "y"}}, queryOptions = Nothing},Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "z"}}, queryOptions = Nothing},Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "a"}}, queryOptions = Nothing},Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "b"}}, queryOptions = Nothing}]]}
+confidentiality2_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "B", principalKnows = [(mkc "x",Private),(mkc "z",Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "x"})]) HasntQuestionMark)),(mkc "z",Leaks),(mkc "a",Private),(mkc "b",Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "a"})]) HasntQuestionMark)),(mkc "a",Leaks)]}),ModelQueries [Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "x"}}, queryOptions = Nothing},Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "z"}}, queryOptions = Nothing},Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "a"}}, queryOptions = Nothing},Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "b"}}, queryOptions = Nothing}]]}
 
 simple1_complete_passive :: Text
 simple1_complete_passive = $(embedStringFile "data/simple1_complete_passive.vp")
@@ -164,8 +164,14 @@ freshness2 = $(embedStringFile "data/freshness2.vp")
 freshness2ast :: Model
 freshness2ast = Model {modelAttacker = Active, modelParts = [ModelPrincipal (Principal {principalName = "Alice", principalKnows = [(mkc "a",Private),(mkc "b",Generates),(mkc "ha",Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "a"})]) HasntQuestionMark)),(mkc "hb",Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "b"})]) HasntQuestionMark))]}),ModelMessage (Message {messageSender = "Alice", messageReceiver = "Bob", messageConstants = [(Constant {constantName = "ha"},False),(Constant {constantName = "hb"},False)]}),ModelPrincipal (Principal {principalName = "Bob", principalKnows = [(mkc "a",Private),(mkc "_",Assignment (EPrimitive (ASSERT (EConstant (Constant {constantName = "ha"})) (EPrimitive (HASH [EConstant (Constant {constantName = "a"})]) HasntQuestionMark)) HasntQuestionMark))]}),ModelQueries [Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "ha"}}, queryOptions = Nothing},Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "hb"}}, queryOptions = Nothing}]]}
 
+freshness3 :: Text
+freshness3 = $(embedStringFile "data/freshness3.vp")
+freshness3_ast :: Model
+freshness3_ast = assertParseModel freshness3
+
 freshness_concat :: Text
 freshness_concat = $(embedStringFile "data/freshness_concat.vp")
+freshness_concat_ast :: Model
 freshness_concat_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(mkc "a",Generates),(mkc "b",Assignment (EPrimitive (CONCAT [EConstant (Constant {constantName = "a"})]) HasntQuestionMark)),(mkc "c",Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "b"})]) HasntQuestionMark)),(mkc "d",Assignment (EPrimitive (CONCAT [EConstant (Constant {constantName = "c"})]) HasntQuestionMark))]}),ModelQueries [Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "b"}}, queryOptions = Nothing},Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "c"}}, queryOptions = Nothing},Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "d"}}, queryOptions = Nothing}]]}
 
 equivalence1 :: Text
@@ -268,10 +274,12 @@ bad_knows_freshness_ast = Model {
 
 knows_freshness :: Text
 knows_freshness = $(embedStringFile "data/knows_freshness.vp")
+knows_freshness_ast :: Model
 knows_freshness_ast = assertParseModel knows_freshness
 
 freshness_aliased :: Text
 freshness_aliased = $(embedStringFile "data/freshness_aliased.vp")
+freshness_aliased_ast :: Model
 freshness_aliased_ast = assertParseModel freshness_aliased
 
 

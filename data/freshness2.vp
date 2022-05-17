@@ -11,6 +11,6 @@ principal Bob[
   _ = ASSERT(ha, HASH(a))
 ]
 queries[
-  freshness? ha
+  freshness? ha // no because a is knows private
   freshness? hb
 ]

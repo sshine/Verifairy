@@ -1,0 +1,11 @@
+attacker [passive]
+principal A [
+  generates ga // msg
+  knows private sa //private key
+  howfresh = SIGNVERIF(G^sa, ga, SIGN(sa, ga))
+]
+queries [
+  freshness? sa // no, because it's "knows private"
+  freshness? ga
+  freshness? howfresh
+]

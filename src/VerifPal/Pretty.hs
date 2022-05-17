@@ -11,6 +11,7 @@ import Prettyprinter.Render.Terminal (AnsiStyle, Color (..), bold, color, colorD
 import Text.Show.Pretty (ppDoc)
 import VerifPal.Types (Constant (..), Query (..), QueryKind (..))
 import VerifPal.Check (ModelState,CanonExpr)
+import Data.Graph.Inductive (Gr,OrdGr)
 
 prettifyQuery :: QueryKind -> String
 prettifyQuery (FreshnessQuery const) =
@@ -38,6 +39,10 @@ myAnnotate (q, res) =
 prettifyModelState :: ModelState -> Doc AnsiStyle
 prettifyModelState ms =
   pretty $ show $ ppDoc ms
+
+prettifyConfidentialityGraph :: OrdGr Gr Constant CanonExpr -> Doc AnsiStyle
+prettifyConfidentialityGraph cg =
+  pretty $ show $ ppDoc cg
 
 prettifyCanonExpr :: CanonExpr -> Doc AnsiStyle
 prettifyCanonExpr cexp =

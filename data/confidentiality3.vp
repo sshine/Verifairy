@@ -1,0 +1,17 @@
+attacker [passive]
+
+principal A [
+  knows private sa
+  knows public  pa
+  sasa = HASH(sa,sa)
+  sapa = HASH(sasa,pa)
+  leaks sasa
+  leaks sapa
+]
+
+queries [
+  confidentiality? sa
+  confidentiality? pa
+  confidentiality? sasa
+  confidentiality? sapa
+]

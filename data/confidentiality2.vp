@@ -9,7 +9,7 @@ principal B [
  ]
 queries [
   confidentiality? x // yes
-  confidentiality? y // 
+
   confidentiality? z // no, because it was leaked
   confidentiality? a // no, because it was leaked
   confidentiality? b // no, because it can be constructed using (a)

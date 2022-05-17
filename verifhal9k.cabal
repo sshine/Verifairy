@@ -55,6 +55,7 @@ executable verifairy
     , fgl
     , filepath
     , githash
+    , graphviz
     , megaparsec
     , mtl
     , optparse-applicative

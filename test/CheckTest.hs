@@ -24,6 +24,7 @@ import VerifPal.Types
 import VerifPal.Check (process, ModelState(..), ModelError(..), ProcessingCounter, CanonExpr(..),CanonKnowledge(..), equationToList, equivalenceExpr, simplifyExpr, decanonicalizeExpr)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Graph.Inductive (mkGraph, OrdGr(..))
 
 import Cases
 
@@ -54,7 +55,9 @@ spec_parsePrincipal = do
               (Constant "c1",Public),
               (Constant "m1",Private),
               (Constant "nil",Public)
-          ], msErrors = [], msQueryResults = []}
+          ], msErrors = [], msQueryResults = []
+          , msConfidentialityGraph = OrdGr (mkGraph [] [])
+          }
 
 shouldOverlapWith :: ModelState -> Constant -> Expectation
 shouldOverlapWith modelState constant =
@@ -86,6 +89,19 @@ shouldHaveEquivalence modelState wantedConstants =
       actualConstants == Prelude.map (\c -> Constant c) wantedConstants
     predicate _ = False
 
+shouldMaybeHaveConfidentiality :: Bool -> ModelState -> Text -> Expectation
+shouldMaybeHaveConfidentiality expected modelState wantedConstant =
+  msQueryResults modelState `shouldSatisfy` any predicate
+  where
+    predicate (Query (ConfidentialityQuery actualConstant) _queryOptions, actual)
+      | expected == actual =
+        actualConstant == Constant wantedConstant
+    predicate _ = False
+shouldHaveConfidentiality :: ModelState -> Text -> Expectation
+shouldHaveConfidentiality = shouldMaybeHaveConfidentiality True
+shouldNotHaveConfidentiality :: ModelState -> Text -> Expectation
+shouldNotHaveConfidentiality = shouldMaybeHaveConfidentiality False
+
 shouldHaveFresh :: ModelState -> Text -> Expectation
 shouldHaveFresh modelState constant =
   msQueryResults modelState `shouldSatisfy` any isFresh
@@ -109,6 +125,7 @@ mkModelState constants = ModelState
   , msProcessingCounter = 0
   , msQueryResults = []
   , msErrors = []
+  , msConfidentialityGraph = OrdGr (mkGraph [] [])
   }
 
 mkConstants :: [(Text, Knowledge)] -> Map Constant Knowledge
@@ -250,8 +267,22 @@ spec_freshness = do
   describe "process" $ do
     it "checks simple freshness query" $ do
       let modelState = process freshness1model
+      shouldNotFail modelState
       modelState `shouldHaveFresh` "x"
       modelState `shouldHaveNotFresh` "y"
+
+    it "checks freshness2 query" $ do
+      let modelState = process freshness2ast
+      shouldNotFail modelState
+      modelState `shouldHaveNotFresh` "ha"
+      modelState `shouldHaveFresh` "hb"
+
+    it "checks freshness3 query" $ do
+      let modelState = process freshness3_ast
+      shouldNotFail modelState
+      modelState `shouldHaveNotFresh` "sa"
+      modelState `shouldHaveFresh` "ga"
+      modelState `shouldHaveFresh` "howfresh"
 
     it "validates data/knows_freshness.vp" $ do
       let modelState = process knows_freshness_ast
@@ -330,14 +361,20 @@ spec_equivalence = do
       -- TODO should NOT have: modelState `shouldHaveEquivalence` ["a", "b"]
       modelState `shouldHaveEquivalence` ["gyx", "gxy"]
 
+spec_confidentiality :: Spec
+spec_confidentiality = do
+  describe "confidentiality" $ do
+    it "checks confidentiality1 query" $ do
+      let modelState = process confidentiality1_ast
+      shouldNotFail modelState
+      modelState `shouldHaveConfidentiality` "w"
+    it "checks confidentiality2 query" $ do
+      let modelState = process confidentiality2_ast
+      shouldNotFail modelState
+
 genKnowledge :: MonadGen m => m CanonKnowledge
 genKnowledge =
-  Hedgehog.Gen.element [
-    CPrivate,
-    CPublic,
-    CGenerates,
-    CPassword
-    ]
+  Hedgehog.Gen.element (enumFrom CPrivate)
 
 genConstantWithKnowledge :: MonadGen m => CanonKnowledge -> m CanonExpr
 genConstantWithKnowledge knowledge = do
@@ -682,7 +719,7 @@ hprop_fuzzFreshness =
   -- in the cases where do_fresh is NOT CGenerates and we would fail
   -- the freshness test, we discard the output to check that it is possible
   -- to fail freshness queries (for models that conceivably do not have it).
-  withDiscards 5000 $
+  withDiscards 10000 $
   withTests 20000 $ verifiedTermination $ property $ do
     do_fresh <- forAll $ genKnowledge
     --let do_fresh = CGenerates
@@ -696,7 +733,7 @@ hprop_fuzzFreshness =
     -- 1) should always be True if we put CGenerates in there
     -- 2) we didn't put CGenerates, and it didn't have freshness
     -- 3) we have accidental freshness in here, discard that
-    if CGenerates == do_fresh || not testResult
+    if (msErrors ms == []) && (CGenerates == do_fresh || not testResult)
       then testProp
       else do
         -- throw away Freshness==True when we did not gen explicit CGenerates:

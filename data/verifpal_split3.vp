@@ -24,5 +24,5 @@ queries [
   equivalence? a_what_what, a_what_what_x
   confidentiality? b_what_what // OK
   confidentiality? a_what_what // OK
-  //confidentiality? a_what_what_x // NOPE
+  confidentiality? a_what_what_x // NOPE
 ]
