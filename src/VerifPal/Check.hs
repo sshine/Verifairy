@@ -510,128 +510,79 @@ addWeightToEdges (b_in,a,c,b_out) =
       b_out' = Data.List.map (\(s,n) -> (PT (1,s),n)) b_out
   in Just (b_in',a,c,b_out')
 
+edgeMap :: Gr a b -> Map (Node, Node) b
+edgeMap g = ufold (
+  \(b_in, v_node, _, b_out) acc -> do
+    let acc2 = foldl' (\acc2' (e,n) -> Map.insert (n     , v_node) e acc2') acc b_in
+        acc3 = foldl' (\acc3' (e,n) -> Map.insert (v_node, n) e      acc3') acc2 b_out
+      in acc3
+  ) Map.empty g
+restoreEdges :: Gr a (Set (Set CanonExpr)) -> Context a () -> MContext a (Set (Set CanonExpr))
+restoreEdges g (b_in,v_node,v_label,b_out) =
+  let findLabels f lst =
+        Data.List.foldl' (
+        \acc ((),n) -> case (acc, (Map.lookup (f n) (edgeMap g))) of
+          (Nothing, _) -> Nothing
+          (_, Nothing) -> Nothing
+          (Just adjs, Just eset) -> Just ((eset,n):adjs)
+        ) (Just []) lst
+      b_in' :: Maybe (Adj (Set (Set CanonExpr)))
+      b_in'  = findLabels (\e_node -> (e_node,v_node)) b_in
+      b_out' = findLabels (\e_node -> (v_node,e_node)) b_out
+  in case (b_in', b_out') of
+    --(Nothing, _) -> Nothing
+    --(_, Nothing) -> Nothing
+    (Just in_adj, Just out_adj) -> Just (in_adj,v_node,v_label,out_adj)
+
 -- computes the set of all expr reachable by the given principal.
 -- the attacker is called "attacker" TODO
 computePrincipalKnowledge :: Text -> State ModelState (Set CanonExpr)
 computePrincipalKnowledge principalName = do
   g <- gets msConfidentialityGraph
-  --let g' = elfilter (\ssc -> True) (unOrdGr g)
-  let g_trc = Data.Graph.Inductive.Query.TransClos.trc (unOrdGr g)
-      attacker_reachable = Data.Graph.Inductive.Query.DFS.reachable attacker (unOrdGr g)
-      g_attacker_might_trc :: Gr CanonExpr ()
-      g_attacker_might_trc = subgraph (neighbors g_trc attacker) g_trc
+  let ug = unOrdGr g
+      g_trc = Data.Graph.Inductive.Query.TransClos.trc ug
+      attacker_reachable_n = Data.Graph.Inductive.Query.DFS.reachable attacker ug
+      g_attacker_reachable = subgraph attacker_reachable_n ug
+      reachable_edges = labEdges g_attacker_reachable
+      reachable_nodes = labNodes g_attacker_reachable
+      --g_attacker_might_trc :: Gr CanonExpr ()
+      --g_attacker_might_trc = subgraph (neighbors g_trc attacker) g_trc
       -- this is the trc of the potential attacker knowledge with the original edges:
-      g_attacker_might = gfiltermap restoreEdges g_attacker_might_trc
-      edgeMap :: Map (Node, Node) (Set (Set CanonExpr))
-      edgeMap = ufold (
-        \(b_in, v_node, _, b_out) acc -> do
-          let acc2 = foldl' (\acc2' (e,n) -> Map.insert (n     , v_node) e acc2') acc b_in
-              acc3 = foldl' (\acc3' (e,n) -> Map.insert (v_node, n) e      acc3') acc2 b_out
-          acc3
-        ) Map.empty (unOrdGr g)
-      restoreEdges :: Context CanonExpr () -> MContext CanonExpr (Set (Set CanonExpr))
-      restoreEdges (b_in,v_node,v_label,b_out) =
-        let findLabels f lst =
-              Data.List.foldl' (
-              \acc (s,n) -> case (acc, (Map.lookup (f n) edgeMap)) of
-                              (Nothing, _) -> Nothing
-                              (_, Nothing) -> Nothing
-                              (Just adjs, Just eset) -> Just ((eset,n):adjs)
-              ) (Just []) lst
-            b_in' :: Maybe (Adj (Set (Set CanonExpr)))
-            b_in'  = findLabels (\e_node -> (e_node,v_node)) b_in
-            b_out' = findLabels (\e_node -> (v_node,e_node)) b_out
-        in case (b_in', b_out') of
-          --(Nothing, _) -> Nothing
-          --(_, Nothing) -> Nothing
-          (Just in_adj, Just out_adj) -> do
-            Just (in_adj,v_node,v_label,out_adj)
-  -- nm = Data.Graph.Inductive.NodeMap.fromGraph (unOrdGr g)
-  --constmap <- gets msConstants
-      rg :: Gr CanonExpr PT
-      rg = gfiltermap addWeightToEdges (unOrdGr g)
+      --g_attacker_might = gfiltermap (restoreEdges (unOrdGr g)) g_attacker_might_trc
       attackerConst = CConstant (Constant principalName) CPrivate
-      attackerL = labfilter ((==) attackerConst) $ unOrdGr g
+      -- TODO this is kind of awkward; ideally we should use the NodeMap to look it
+      -- up; but looking things up there is also awkward:
+      attackerL = labfilter ((==) attackerConst) ug
       attacker = case nodes attackerL of
         [n] -> n
         _ -> 1 -- TODO this should never be reached
       learn_from_graph :: Set CanonExpr -> (Set CanonExpr, Gr CanonExpr (Set (Set CanonExpr)))
       learn_from_graph currently_known =
-        let known_edges = Data.List.filter (\(n,n',preconditions) -> any (\s -> s `Set.isSubsetOf` currently_known) preconditions) $ labEdges (unOrdGr g)
-            -- now we need to get the nodes that the attacker can see.
-            reachability' :: Gr CanonExpr ()
-            reachability' = Data.Graph.Inductive.Query.TransClos.trc $ mkGraph (labNodes (unOrdGr g)) known_edges
-            -- get the nodes from (g) that are reachable from the attacker:
-            known_graph = subgraph (neighbors reachability' attacker) (unOrdGr g)
-            new_set = Set.fromList $ Data.List.map snd (labNodes known_graph)
-        in (new_set, known_graph) --(Set.union new_set currently_known, known_graph)
-  case Data.Graph.Inductive.Query.SP.spTree attacker rg of
-    [] -> pure Set.empty
-    paths -> do
-      let attackerSetOrigin = Set.fromList [attackerConst,CConstant (Constant "nil") CPublic]
-          foldPaths :: Set CanonExpr -> Set CanonExpr -- reverse: shortest paths first
-          foldPaths aso = foldl inner2 (aso) (Data.List.reverse paths)
-          inner1 :: (Bool, Set CanonExpr) -> (Node, PT) -> (Bool, Set CanonExpr)
-          inner1 (sofar, thisSet) (node, PT (_, preconditions)) = do
-            if not sofar
-              then (sofar,thisSet)
-              else do
-              let canGet = node == attacker || -- (instance Num PT).fromInteger gives us an empty OR set for the first hop; but we know it's always (attacker)
-                           foldl (\acc required -> acc ||
-                                   null required ||
-                                   (required `Set.isSubsetOf` thisSet)
-                                   -- || foldl (\acc ce -> acc && foldl (\acc2 ae -> acc2 || equivalenceExpr ce ae) False thisSet) True required -- FIXME is this required?
-                                 ) False preconditions
-                  c_expr = case lab (unOrdGr g) $ node of
-                             Just e -> e
-              if canGet
-                then do
-                --let res :: (Bool, Set CanonExpr)
-                --    res = pure (True, Set.insert (simplifyExpr c_expr) $ (Set.insert c_expr) thisSet)
-                let simpl = simplifyExpr c_expr
-                    -- FIXME inserting (SPLIT simpl)+(CG simpl) here is a total hack:
-                    res = Set.insert (CPrimitive (SPLIT simpl) HasQuestionMark) $ Set.insert (CPrimitive (SPLIT simpl) HasntQuestionMark) $ Set.insert (CG simpl) $ Set.insert simpl $ (Set.insert c_expr thisSet)
-                if Set.member simpl thisSet
-                  then (True, res) -- already know this
-                  else do
-                  let a6 = Debug.Trace.traceShow ("SUBSET:"::Text) $ res
-                      a5 = Debug.Trace.traceShow preconditions $ a6
-                      a4 = Debug.Trace.traceShow thisSet $ a5
-                      a3 = Debug.Trace.traceShow ("SO WE LEARN:"::Text) $ a4
-                      a2 = Debug.Trace.traceShow c_expr $ a3
-                      a1 = Debug.Trace.traceShow ("========="::Text) $ a2
-                  --let res2 = Debug.Trace.traceShow (c_expr) $ res
-                  (True, res) --Debug.Trace.traceShow (c_expr) $ res
-                else do
-                let a6 = Debug.Trace.traceShow ("Cant learn"::Text) $ thisSet
-                    a5 = Debug.Trace.traceShow ("expr:"::Text, c_expr) $ a6
-                    a4 = Debug.Trace.traceShow ("pre"::Text, preconditions) $ a5
-                    a3 = Debug.Trace.traceShow ("is not in"::Text) $ a4
-                    a2 = Debug.Trace.traceShow ("thisSet"::Text, thisSet) $ a3
-                    a1 = Debug.Trace.traceShow ("///////"::Text) $ a2
-                --_ <- Debug.Trace.traceShow ("Cant learn"::Text) (False, thisSet)
-                (False, thisSet) -- attacker can't reach this
-          inner2 :: Set CanonExpr -> LPath PT -> Set CanonExpr
-          inner2 attackerSet path = snd (foldl inner1 (True,attackerSet) (Data.List.reverse $ unLPath path)) -- (Data.List.reverse ))
-          news = foldPaths attackerSetOrigin
-      let todo_news :: Set CanonExpr
-          todo_news = while_new news
-          while_new :: Set CanonExpr -> Set CanonExpr
-          while_new old =
-            let newer = fst $ learn_from_graph old in --(foldPaths old) in
-            if old == newer
-            then old -- nothing new learned, we are done
-            else while_new newer -- we learned something new, try again
-      --_ <- Debug.Trace.traceShow todo_news $ pure ()
-      let (latest_attacker_knowl, filteredGraph) = learn_from_graph todo_news
-      mpcgm <- gets msPrincipalConfidentialityGraph
-      let new_g = Map.insert principalName (OrdGr filteredGraph) mpcgm
-      modify $ \st -> do
-        st{msPrincipalConfidentialityGraph = new_g}
-      -- FIXME ideally this thing should be equal to todo_news, but alas it's not:
-      --Debug.Trace.traceShow ("em cardinal"::Text, Map.size edgeMap, "g cardinal"::Text, size (unOrdGr g)) $
-      --  Debug.Trace.traceShow ("g_attacker_might"::Text, g_attacker_might) $
-      pure latest_attacker_knowl
+        let known_edges = Data.List.filter (
+              \(_,_,preconditions) -> any (
+                \s -> s `Set.isSubsetOf` currently_known
+                ) preconditions) reachable_edges
+            maybe_graph = mkGraph reachable_nodes known_edges
+            now_reachable =
+              Data.Graph.Inductive.Query.DFS.reachable attacker maybe_graph
+            known_graph = subgraph now_reachable maybe_graph
+            new_known = Set.fromList $ Data.List.map snd (labNodes known_graph)
+        in (new_known, known_graph) --(Set.union new_set currently_known, known_graph)
+  let attackerSetOrigin = Set.fromList [
+        attackerConst
+        , CConstant (Constant "nil") CPublic
+        ]
+      while_new old =
+        let (newer, new_gr) = learn_from_graph old in
+          if old == newer
+          then (old, new_gr) -- nothing new learned, we are done
+          else while_new newer -- we learned something new, try again
+      (latest_attacker_knowl, filteredGraph) = while_new attackerSetOrigin
+  mpcgm <- gets msPrincipalConfidentialityGraph
+  let new_g = Map.insert principalName (OrdGr filteredGraph) mpcgm
+  modify $ \st -> do
+    st{msPrincipalConfidentialityGraph = new_g}
+  pure latest_attacker_knowl
 
 processModelPart :: ModelPart -> State ModelState ()
 processModelPart (ModelPrincipal (Principal name knows)) = do
@@ -766,7 +717,7 @@ processQuery query@(Query (ConfidentialityQuery constant) _TODO_queryOptions) = 
   attackerSet <- computePrincipalKnowledge "attacker" -- TODO computing this for each query is stupid, we should cache it
   let canon_constant :: CanonExpr
       canon_constant = simplifyExpr $ canonicalizeExpr constmap (EConstant (constant))
-      attacker_knows = foldl (\knows cexpr -> knows || equivalenceExpr cexpr canon_constant) False attackerSet
+      attacker_knows = foldl' (\knows cexpr -> knows || equivalenceExpr cexpr canon_constant) False attackerSet
   addQueryResult query (not attacker_knows)
   pure ()
 
@@ -1158,7 +1109,7 @@ decanonicalizeExpr m orig_exp = do
 mapAccPrimitiveP :: aux -> PrimitiveP a -> (aux -> a -> (aux,b)) -> (aux, PrimitiveP b)
 mapAccPrimitiveP aux prim f = do
   let nary constr exps = do
-        let (aux2,args) = foldl (
+        let (aux2,args) = foldl' (
               \(aux,acc) exp ->
                 let (aux',m1) = f aux exp in (aux',m1:acc)
               ) (aux,[]) exps
@@ -1216,7 +1167,7 @@ mapPrimitiveP prim f = snd (mapAccPrimitiveP () prim (\() a -> ((), f a)))
 -- from other principals.
 foldConstantsInExpr :: acc -> Expr -> (Constant -> acc -> acc) -> acc
 foldConstantsInExpr acc o_exp f =
-  let dolist = foldl (\acc exp -> foldConstantsInExpr acc exp f) acc in
+  let dolist = foldl' (\acc exp -> foldConstantsInExpr acc exp f) acc in
   case o_exp of
     EItem _TODOFIXME exp -> dolist [exp] -- TODO we need testcases that hit this path
     G exp -> dolist [exp]
