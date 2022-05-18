@@ -425,6 +425,28 @@ spec_confidentiality = do
       shouldNotFail modelState   
       modelState `shouldNotHaveConfidentiality` "sa"
       modelState `shouldNotHaveConfidentiality` "outer"
+    it "confidentiality7" $ do
+      let modelState = process confidentiality7_ast
+      shouldNotFail modelState   
+      modelState `shouldNotHaveConfidentiality` "sa"
+      modelState `shouldNotHaveConfidentiality` "outer"
+      modelState `shouldNotHaveConfidentiality` "magic"
+      modelState `shouldHaveEquivalence` ["outer","magic"]
+    it "confidentiality8" $ do
+      let modelState = process confidentiality8_ast
+      shouldNotFail modelState   
+      modelState `shouldNotHaveConfidentiality` "sa"
+      modelState `shouldNotHaveConfidentiality` "outer"
+    it "confidentiality9" $ do
+      let modelState = process confidentiality9_ast
+      shouldNotFail modelState   
+      modelState `shouldNotHaveConfidentiality` "sa"
+      modelState `shouldNotHaveConfidentiality` "outer"
+    it "confidentiality10" $ do
+      let modelState = process confidentiality10_ast
+      shouldNotFail modelState   
+      modelState `shouldNotHaveConfidentiality` "sa"
+      modelState `shouldNotHaveConfidentiality` "outer"
 
 genKnowledge :: MonadGen m => m CanonKnowledge
 genKnowledge =
@@ -801,7 +823,7 @@ hprop_fuzzFreshness =
 
 hprop_fuzzConfidentiality :: Hedgehog.Property
 hprop_fuzzConfidentiality =
-  withTests 100 $ verifiedTermination $ property $ do
+  withTests 1000 $ verifiedTermination $ property $ do
   c_expr <- forAll genCanonExpr
   --Debug.Trace.traceShow c_expr $ annotateShow("expr"::Text, c_expr)
   -- TODO it would be great to partition msConstants / msPrincipalConstants

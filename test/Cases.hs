@@ -151,6 +151,26 @@ confidentiality6 = $(embedStringFile "data/confidentiality6.vp")
 confidentiality6_ast :: Model
 confidentiality6_ast = assertParseModel confidentiality6
 
+confidentiality7 :: Text
+confidentiality7 = $(embedStringFile "data/confidentiality7.vp")
+confidentiality7_ast :: Model
+confidentiality7_ast = assertParseModel confidentiality7
+
+confidentiality8 :: Text
+confidentiality8 = $(embedStringFile "data/confidentiality8.vp")
+confidentiality8_ast :: Model
+confidentiality8_ast = assertParseModel confidentiality8
+
+confidentiality9 :: Text
+confidentiality9 = $(embedStringFile "data/confidentiality9.vp")
+confidentiality9_ast :: Model
+confidentiality9_ast = assertParseModel confidentiality9
+
+confidentiality10 :: Text
+confidentiality10 = $(embedStringFile "data/confidentiality10.vp")
+confidentiality10_ast :: Model
+confidentiality10_ast = assertParseModel confidentiality10
+
 simple1_complete_passive :: Text
 simple1_complete_passive = $(embedStringFile "data/simple1_complete_passive.vp")
 
