@@ -157,6 +157,7 @@ buildKnowledgeGraph ms = do
           upsertMapNodeM simpl
           -- learn simpl by knowing c_expr
           upsertEdgeM (c_expr,simpl, edge_always)
+          upsertEdgeM (simpl,c_expr, edge_always)
         case c_expr of
           CPrimitive (ENC key msg) _ -> do
             s_key <- foldCanonExpr key
@@ -299,7 +300,7 @@ buildKnowledgeGraph ms = do
             -- TODO technically it should only lead to knowing the first element
             -- if SPLIT() is contained within another expression
             -- simple leads to exp:
-            case simplifyExpr exp of
+            case s_exp of
               CPrimitive (CONCAT (first:_)) _ -> do
                 s_first <- foldCanonExpr first
                 upsertEdgeM (simpl, s_first, edge_always)
@@ -339,11 +340,11 @@ buildKnowledgeGraph ms = do
                    ) () simple_lst
             pure simpl
           CPrimitive (SIGN key message) _ -> do
-            _ <- foldCanonExpr key
-            _ <- foldCanonExpr message
+            s_key <- foldCanonExpr key
+            s_msg <- foldCanonExpr message
             -- attacker can reconstruct from args:
-            upsertEdgeM (key,simpl,Set.singleton $ Set.singleton message)
-            upsertEdgeM (message,simpl,Set.singleton $ Set.singleton key)
+            upsertEdgeM (s_key,simpl,Set.singleton $ Set.singleton s_msg)
+            upsertEdgeM (s_msg,simpl,Set.singleton $ Set.singleton s_key)
             pure simpl
           CPrimitive (SIGNVERIF pk message signed) _ -> do
             s_pk <- foldCanonExpr pk
@@ -369,10 +370,10 @@ buildKnowledgeGraph ms = do
             s_pk_c <- foldCanonExpr pk_c
             s_message <- foldCanonExpr message
             let simple_set = Set.singleton $ Set.fromList [s_key, s_pk_b, s_pk_c, s_message]
-            upsertEdgeM (key, simpl, simple_set)
-            upsertEdgeM (pk_b, simpl, simple_set)
-            upsertEdgeM (pk_c, simpl, simple_set)
-            upsertEdgeM (message, simpl, simple_set)
+            upsertEdgeM (s_key, simpl, simple_set)
+            upsertEdgeM (s_pk_b, simpl, simple_set)
+            upsertEdgeM (s_pk_c, simpl, simple_set)
+            upsertEdgeM (s_message, simpl, simple_set)
             pure simpl
           CPrimitive (RINGSIGNVERIF a b c msg sig) _ -> do
             s_a <- foldCanonExpr a
@@ -382,6 +383,10 @@ buildKnowledgeGraph ms = do
             s_sig <- foldCanonExpr sig
             -- can reconstruct args:
             upsertEdgeM (s_a, simpl, Set.singleton $ Set.fromList [s_b,s_c,s_msg,s_sig])
+            upsertEdgeM (s_b, simpl, Set.singleton $ Set.fromList [s_a,s_c,s_msg,s_sig])
+            upsertEdgeM (s_c, simpl, Set.singleton $ Set.fromList [s_a,s_b,s_msg,s_sig])
+            upsertEdgeM (s_msg, simpl, Set.singleton $ Set.fromList [s_a,s_b,s_c,s_sig])
+            upsertEdgeM (s_sig, simpl, Set.singleton $ Set.fromList [s_a,s_b,s_c,s_msg])
             -- simpl leads to msg either way:
             upsertEdgeM (simpl, s_msg, edge_always)
             pure simpl -- TODO
@@ -454,24 +459,25 @@ buildKnowledgeGraph ms = do
               _ -> pure () -- learn nothing
             pure simpl
           CPrimitive (PKE_ENC pk plaintext) _ -> do
-            _ <- foldCanonExpr pk
-            _ <- foldCanonExpr plaintext
-            upsertEdgeM (plaintext, simpl, Set.singleton $ Set.singleton pk)
-            upsertEdgeM (pk, simpl, Set.singleton $ Set.singleton plaintext)
-            case simplifyExpr pk of
+            s_pk <- foldCanonExpr pk
+            s_plaintext <- foldCanonExpr plaintext
+            upsertEdgeM (s_plaintext, simpl, Set.singleton $ Set.singleton s_pk)
+            upsertEdgeM (s_pk, simpl, Set.singleton $ Set.singleton s_plaintext)
+            case s_pk of
               CG secret -> do
                 -- attacker can decrypt if the know secret and simpl:
-                upsertEdgeM (secret, plaintext, Set.singleton $ Set.singleton simpl)
+                upsertEdgeM (secret, s_plaintext, Set.singleton $ Set.singleton simpl)
+                upsertEdgeM (simpl, s_plaintext, Set.singleton $ Set.singleton secret)
                 pure simpl
               _ -> pure simpl -- TODO this should be a type error?
           CPrimitive (PKE_DEC key ciphertext) _ -> do
-            _ <- foldCanonExpr key
-            _ <- foldCanonExpr ciphertext
+            s_key <- foldCanonExpr key
+            s_ciphertext <- foldCanonExpr ciphertext
             -- reconstruct from args:
-            upsertEdgeM (key, simpl, Set.singleton $ Set.singleton ciphertext)
-            upsertEdgeM (ciphertext, simpl, Set.singleton $ Set.singleton key)
+            upsertEdgeM (s_key, simpl, Set.singleton $ Set.singleton s_ciphertext)
+            upsertEdgeM (s_ciphertext, simpl, Set.singleton $ Set.singleton s_key)
             -- re-encrypt:
-            upsertEdgeM (simpl, ciphertext, Set.singleton $ Set.singleton key)
+            upsertEdgeM (simpl, s_ciphertext, Set.singleton $ Set.singleton s_key)
             pure simpl
           --unhandledTODO -> do -- TODO only here to help detect unhandled cases
           --  Debug.Trace.traceShow unhandledTODO $ pure simpl

@@ -446,6 +446,23 @@ spec_confidentiality = do
       let modelState = process confidentiality10_ast
       shouldNotFail modelState   
       modelState `shouldNotHaveConfidentiality` "sa"
+      modelState `shouldNotHaveConfidentiality` "x"
+      modelState `shouldNotHaveConfidentiality` "outer"
+    it "confidentiality11" $ do
+      let modelState = process confidentiality11_ast
+      shouldNotFail modelState   
+      modelState `shouldNotHaveConfidentiality` "sa"
+      modelState `shouldNotHaveConfidentiality` "outer"
+    it "confidentiality12" $ do
+      let modelState = process confidentiality12_ast
+      shouldNotFail modelState   
+      modelState `shouldNotHaveConfidentiality` "sa"
+      modelState `shouldNotHaveConfidentiality` "outer"
+    it "confidentiality13" $ do
+      let modelState = process confidentiality13_ast
+      shouldNotFail modelState   
+      modelState `shouldNotHaveConfidentiality` "sa"
+      modelState `shouldNotHaveConfidentiality` "sb"
       modelState `shouldNotHaveConfidentiality` "outer"
 
 genKnowledge :: MonadGen m => m CanonKnowledge
@@ -823,7 +840,7 @@ hprop_fuzzFreshness =
 
 hprop_fuzzConfidentiality :: Hedgehog.Property
 hprop_fuzzConfidentiality =
-  withTests 1000 $ verifiedTermination $ property $ do
+  withTests 1000 $ withShrinks 1000 $ verifiedTermination $ property $ do
   c_expr <- forAll genCanonExpr
   --Debug.Trace.traceShow c_expr $ annotateShow("expr"::Text, c_expr)
   -- TODO it would be great to partition msConstants / msPrincipalConstants
