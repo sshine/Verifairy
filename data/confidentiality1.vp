@@ -5,7 +5,7 @@ principal C [
    generates e
    r = CONCAT(q,w,e)
    t, u, i = SPLIT(r)
-   o = SPLIT(CONCAT(i))
+   o = SPLIT(CONCAT(i,i))
    leaks q
    leaks i
 ]

@@ -4,3 +4,4 @@ principal A [
   knows private b
   c = CONCAT(a,b)
 ]
+queries []

@@ -5,10 +5,10 @@ import Control.Monad
 --import Data.Char (chr, isHexDigit)
 --import Data.FileEmbed
 --import Data.Foldable (for_)
-import Data.List.NonEmpty (NonEmpty(..), NonEmpty)
+import qualified Data.List.NonEmpty as NonEmpty(NonEmpty(..), NonEmpty, fromList)
 import Data.Map (fromList)
 --import qualified Data.Map as Map
-import Data.Text (Text,pack,unpack)
+import Data.Text (Text,pack,unpack,toLower)
 --import qualified Data.Text as Text
 --import Data.Text.Read (hexadecimal)
 --import Data.Void
@@ -25,11 +25,11 @@ import VerifPal.Check (process, ModelState(..), ModelError(..), ProcessingCounte
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Graph.Inductive (mkGraph, OrdGr(..))
-
+import Debug.Trace(traceShow)
 import Cases
 
-lhsConst :: Text -> NonEmpty Constant
-lhsConst name = (Data.List.NonEmpty.:|) (Constant name) []
+lhsConst :: Text -> NonEmpty.NonEmpty Constant
+lhsConst name = (NonEmpty.:|) (Constant name) []
 
 shouldNotFail :: ModelState -> Expectation
 shouldNotFail modelState =
@@ -57,6 +57,7 @@ spec_parsePrincipal = do
               (Constant "nil",Public)
           ], msErrors = [], msQueryResults = []
           , msConfidentialityGraph = OrdGr (mkGraph [] [])
+          , msPrincipalConfidentialityGraph = Map.empty
           }
 
 shouldOverlapWith :: ModelState -> Constant -> Expectation
@@ -86,7 +87,7 @@ shouldHaveEquivalence modelState wantedConstants =
   msQueryResults modelState `shouldSatisfy` any predicate
   where
     predicate (Query (EquivalenceQuery actualConstants) _queryOptions, True) =
-      actualConstants == Prelude.map (\c -> Constant c) wantedConstants
+      actualConstants == Prelude.map (\c -> Constant (Data.Text.toLower c)) wantedConstants
     predicate _ = False
 
 shouldMaybeHaveConfidentiality :: Bool -> ModelState -> Text -> Expectation
@@ -126,6 +127,7 @@ mkModelState constants = ModelState
   , msQueryResults = []
   , msErrors = []
   , msConfidentialityGraph = OrdGr (mkGraph [] [])
+  , msPrincipalConfidentialityGraph = Map.empty
   }
 
 mkConstants :: [(Text, Knowledge)] -> Map Constant Knowledge
@@ -392,6 +394,37 @@ spec_confidentiality = do
       modelState `shouldNotHaveConfidentiality` "sasa2"
       modelState `shouldHaveConfidentiality` "sasa3"
       modelState `shouldNotHaveConfidentiality` "sasa4"
+    it "confidentiality4 confidential" $ do
+      let modelState = process confidentiality4_ast
+      shouldNotFail modelState
+      modelState `shouldHaveConfidentiality` "ga"
+      modelState `shouldHaveConfidentiality` "gb"
+      modelState `shouldHaveConfidentiality` "dh1_a"
+      modelState `shouldHaveConfidentiality` "dh1_b"
+      modelState `shouldHaveConfidentiality` "msg_plain_a"
+      modelState `shouldHaveConfidentiality` "msg_plain_b"
+      modelState `shouldHaveEquivalence` ["msg_plain_a","msg_plain_b"]
+      modelState `shouldHaveEquivalence` ["dh1_a","dh1_b"]
+      modelState `shouldHaveEquivalence` ["dh2_a","dh2_b"]
+      modelState `shouldHaveEquivalence` ["msg2_plain_a","msg2_plain_b"]
+    it "confidentiality4 NOT confidential" $ do
+      let modelState = process confidentiality4_ast
+      shouldNotFail modelState   
+      modelState `shouldNotHaveConfidentiality` "pub_a"
+      modelState `shouldNotHaveConfidentiality` "pub_b"
+      modelState `shouldNotHaveConfidentiality` "msg_enc_b"
+      modelState `shouldNotHaveConfidentiality` "msg2_enc_b"
+    it "confidentiality5" $ do
+      let modelState = process confidentiality5_ast
+      shouldNotFail modelState   
+      modelState `shouldNotHaveConfidentiality` "ga"
+      modelState `shouldNotHaveConfidentiality` "pub_a"
+      modelState `shouldNotHaveConfidentiality` "dh1_b" -- attacker reconstructs using pub_b
+    it "confidentiality6" $ do
+      let modelState = process confidentiality6_ast
+      shouldNotFail modelState   
+      modelState `shouldNotHaveConfidentiality` "sa"
+      modelState `shouldNotHaveConfidentiality` "outer"
 
 genKnowledge :: MonadGen m => m CanonKnowledge
 genKnowledge =
@@ -477,7 +510,7 @@ genPrimitiveCanonExpr :: MonadGen m => m (PrimitiveP CanonExpr)
 genPrimitiveCanonExpr = do
   let arityN = [CONCAT,HASH,PW_HASH]
   let unary = [SPLIT,SHAMIR_SPLIT]
-  let binary = [ASSERT,MAC,ENC,DEC,PKE_ENC,PKE_DEC,SIGN,BLIND,SHAMIR_JOIN]
+  let binary = [MAC,ENC,DEC,PKE_ENC,PKE_DEC,SIGN,BLIND,SHAMIR_JOIN] -- TODO: should we put ASSERT in here?
   let arity3 = [HKDF, AEAD_ENC, AEAD_DEC, SIGNVERIF, UNBLIND]
   let arity4 = [RINGSIGN]
   let arity5 = [RINGSIGNVERIF]
@@ -693,7 +726,7 @@ buildModelState cexpr = do
                                principalName="A",
                                principalKnows=Prelude.map (
                                    \(l,r) -> (
-                                     (Data.List.NonEmpty.:|) l [],r)) (
+                                     (NonEmpty.:|) l [],r)) (
                                    mlst++[(const,
                                            case decan of -- direct aliasing is not permitted, so we work around the case where decan is simply a constant:
                                              EConstant _ -> Assignment (G decan)
@@ -768,9 +801,9 @@ hprop_fuzzFreshness =
 
 hprop_fuzzConfidentiality :: Hedgehog.Property
 hprop_fuzzConfidentiality =
-  withTests 1000 $ verifiedTermination $ property $ do
+  withTests 100 $ verifiedTermination $ property $ do
   c_expr <- forAll genCanonExpr
-  annotateShow("expr"::Text, c_expr)
+  --Debug.Trace.traceShow c_expr $ annotateShow("expr"::Text, c_expr)
   -- TODO it would be great to partition msConstants / msPrincipalConstants
   -- into sets where equivalenceExpr holds, and add ConfidentialityQuery entries
   -- for those constants to test that
@@ -779,15 +812,14 @@ hprop_fuzzConfidentiality =
   --      any Assignment draws its confidentiality from a 'knows' or 'generates' stanza
   --      so it should be possible to break confidentiality by leaking those.
   let (const, modelA) = buildModelState c_expr
+      confQuery = ModelQueries [
+        Query {
+            queryKind = ConfidentialityQuery const,
+            queryOptions = Nothing
+            }
+        ]
       model = modelA{
-        modelParts=(modelParts modelA) ++ [
-            ModelQueries [
-                Query {
-                    queryKind = ConfidentialityQuery const,
-                      queryOptions = Nothing
-                    }
-                ]
-            ]
+        modelParts=(modelParts modelA) ++ [ confQuery ]
         }
   annotateShow("model"::Text, model)
   let ms = process model
@@ -801,4 +833,19 @@ hprop_fuzzConfidentiality =
     then pure ()
     else do
     classify "confidentiality?" (testResult)
-    pure ()
+    if testResult
+      then do
+      let except = filter ((/=) const) (Map.keys (msConstants ms))
+          leakyPrincipal = ModelPrincipal(
+            Principal {
+                principalName="A",
+                principalKnows=[(NonEmpty.fromList except, Leaks)]
+                })
+          leakyModel = modelA{
+            modelParts=(modelParts modelA) ++ [leakyPrincipal] ++ [ confQuery ]}
+          leaky_ms = process leakyModel
+          still_secret = isConf (msQueryResults leaky_ms)
+      annotateShow("leakyModel"::Text, leakyModel)
+      annotateShow("leaky_ms"::Text, leaky_ms)
+      still_secret === False
+      else pure () -- had no confidentiality in the first place

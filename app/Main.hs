@@ -17,7 +17,7 @@ import VerifPal.Parser (parseModel)
 import VerifPal.Pretty (myAnnotate, prettifyModelState, prettifyCanonExpr,colorYellow)--, prettifyConfidentialityGraph)
 import VerifPal.Version (gitBuildInfo)
 import VerifPal.Types (Constant(..), Expr(..))
-import Data.Map() --lookup)
+import Data.Map(lookup) --lookup)
 import Text.Show.Pretty (ppDoc)
 import Data.GraphViz
 import Data.Graph.Inductive.PatriciaTree
@@ -49,7 +49,7 @@ argsHandler Args {srcFile = srcFile, simplify=simplify, dotFile=dotFile, verbose
           diag' = addFile diag fake_filename (Text.unpack srcText)
        in printDiagnostic stderr True True 4 diag'
     Right model -> do
-      Text.hPutStrLn stderr ("Processing file " <> Text.pack srcFile <> "...")
+      Text.hPutStrLn stderr ("Processing file " <> Text.pack srcFile)
       let ms = VerifPal.Check.process model
       --
       case simplify of
@@ -76,7 +76,11 @@ argsHandler Args {srcFile = srcFile, simplify=simplify, dotFile=dotFile, verbose
       --putStrLn ""
       --
       unless (dotFile == "") $
-        do Text.writeFile dotFile $ mytoDot (msConfidentialityGraph ms)
+        do Text.writeFile dotFile $ mytoDot $
+             case Data.Map.lookup ("attacker"::Text) (msPrincipalConfidentialityGraph ms) of
+               Just gr -> gr
+               Nothing -> msConfidentialityGraph ms -- TODO allow choosing principal
+      --
       -- TODO should make a Diagnostic here for each of these:
       traverse_ print (reverse $ msErrors ms)
       msQueryResults ms & map myAnnotate & for_ $ \annotated -> do
@@ -89,7 +93,11 @@ argsHandler Args {srcFile = srcFile, simplify=simplify, dotFile=dotFile, verbose
 mytoDot :: Show a => Show b => Data.Graph.Inductive.Graph.OrdGr Data.Graph.Inductive.PatriciaTree.Gr a b -> Text
 mytoDot g =
   -- nodeAttrs :: (Node, Link) -> Attributes
-  let nodeAttrs (a,label) = -- fmtNode= \(_,label)-> [Label (StrLabel (L.pack label))]
+  let edgeAttrs (x) =
+        [
+          toLabel . Text.pack . show $ ppDoc $ x
+        ]
+      nodeAttrs (a,label) = -- fmtNode= \(_,label)-> [Label (StrLabel (L.pack label))]
         [ toLabel . Text.pack . show $ ppDoc $ label
         , shape BoxShape
         , LabelJust JLeft
@@ -114,6 +122,7 @@ mytoDot g =
         Data.Graph.Inductive.Graph.OrdGr g ->
           graphToDot (nonClusteredParams {
                          fmtNode = nodeAttrs
+                         , fmtEdge = edgeAttrs
                          , globalAttributes = [
                              NodeAttrs [
                                  shape BoxShape

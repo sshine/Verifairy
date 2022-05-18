@@ -2,7 +2,7 @@
 
 module Cases where
 
-import Control.Monad
+import Control.Monad()
 import Data.Char (chr, isHexDigit)
 import Data.FileEmbed
 import Data.Foldable (for_)
@@ -17,8 +17,10 @@ import Data.List.NonEmpty
 import VerifPal.Types
 import VerifPal.Parser
 
+mkc :: Text -> NonEmpty Constant
 mkc c = (:|) (Constant c) []
 
+assertParseModel :: Text -> Model
 assertParseModel src =
   case parseModel src of
     Right model -> model
@@ -84,6 +86,7 @@ equations1ast = Principal
 
 equations2 :: Text
 equations2 = $(embedStringFile "data/equations2.vp")
+equations2_ast :: Model
 equations2_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "Server", principalKnows = [
                                                                                              (mkc "x",Generates),
                                                                                              (mkc "y",Generates),
@@ -133,6 +136,21 @@ confidentiality3 = $(embedStringFile "data/confidentiality3.vp")
 confidentiality3_ast :: Model
 confidentiality3_ast = assertParseModel confidentiality3
 
+confidentiality4 :: Text
+confidentiality4 = $(embedStringFile "data/confidentiality4.vp")
+confidentiality4_ast :: Model
+confidentiality4_ast = assertParseModel confidentiality4
+
+confidentiality5 :: Text
+confidentiality5 = $(embedStringFile "data/confidentiality5.vp")
+confidentiality5_ast :: Model
+confidentiality5_ast = assertParseModel confidentiality5
+
+confidentiality6 :: Text
+confidentiality6 = $(embedStringFile "data/confidentiality6.vp")
+confidentiality6_ast :: Model
+confidentiality6_ast = assertParseModel confidentiality6
+
 simple1_complete_passive :: Text
 simple1_complete_passive = $(embedStringFile "data/simple1_complete_passive.vp")
 
@@ -159,6 +177,7 @@ phase1ast = Phase 42
 
 freshness1 :: Text
 freshness1 = $(embedStringFile "data/freshness1.vp")
+freshness1ast :: Model
 freshness1ast = Model {modelAttacker = Active, modelParts = [ModelPrincipal (Principal {principalName = "Alice", principalKnows = [(mkc "a",Private),(mkc "b",Generates),(mkc "ha",Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "a"})]) HasntQuestionMark)),(mkc "hb",Assignment (EPrimitive (HASH [EConstant (Constant {constantName = "b"})]) HasntQuestionMark))]}),ModelMessage (Message {messageSender = "Alice", messageReceiver = "Bob", messageConstants = [(Constant {constantName = "ha"},False),(Constant {constantName = "hb"},False)]}),ModelPrincipal (Principal {principalName = "Bob", principalKnows = [(mkc "a",Private),(mkc "_",Assignment (EPrimitive (ASSERT (EConstant (Constant {constantName = "ha"})) (EPrimitive (HASH [EConstant (Constant {constantName = "a"})]) HasntQuestionMark)) HasntQuestionMark))]}),ModelQueries [Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "ha"}}, queryOptions = Nothing},Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "hb"}}, queryOptions = Nothing}]]}
 freshness1model :: Model
 freshness1model = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "Alice", principalKnows = [(mkc "x",Generates),(mkc "y",Private)]}),ModelQueries [Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "x"}}, queryOptions = Nothing},Query {queryKind = FreshnessQuery {freshnessConstant = Constant {constantName = "y"}}, queryOptions = Nothing}]]}
@@ -181,6 +200,7 @@ freshness_concat_ast = Model {modelAttacker = Passive, modelParts = [ModelPrinci
 
 equivalence1 :: Text
 equivalence1 = $(embedStringFile "data/equivalence1.vp")
+equivalence1_ast :: Model
 equivalence1_ast = Model {
   modelAttacker = Passive,
   modelParts = [
@@ -193,18 +213,22 @@ equivalence1_ast = Model {
 
 equivalence2 :: Text
 equivalence2 = $(embedStringFile "data/equivalence2.vp")
+equivalence2_ast :: Model
 equivalence2_ast = assertParseModel equivalence2
 
 equivalence3 :: Text
 equivalence3 = $(embedStringFile "data/equivalence3.vp")
+equivalence3_ast :: Model
 equivalence3_ast = assertParseModel equivalence3
 
 equivalence4 :: Text
 equivalence4 = $(embedStringFile "data/equivalence4.vp")
+equivalence4_ast :: Model
 equivalence4_ast = assertParseModel equivalence4
 
 equivalence5 :: Text
 equivalence5 = $(embedStringFile "data/equivalence5.vp")
+equivalence5_ast :: Model
 equivalence5_ast = assertParseModel equivalence5
 
 abknows :: Text
@@ -233,14 +257,17 @@ bad_generatesknows_ast = Model {modelAttacker = Passive, modelParts = [ModelPrin
 
 bad_undefinedconstant_in_cfquery :: Text
 bad_undefinedconstant_in_cfquery = $(embedStringFile "data/bad_undefinedconstant_in_cfquery.vp")
+bad_undefinedconstant_in_cfquery_ast :: Model
 bad_undefinedconstant_in_cfquery_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = [(mkc "x",Private)]}),ModelQueries [Query {queryKind = ConfidentialityQuery {confidentialityConstant = Constant {constantName = "y"}}, queryOptions = Nothing}]]}
 
 bad_early_constant :: Text
 bad_early_constant = $(embedStringFile "data/bad_early_constant.vp")
+bad_early_constant_ast :: Model
 bad_early_constant_ast = Model {modelAttacker = Passive, modelParts = [ModelPrincipal (Principal {principalName = "A", principalKnows = []}),ModelPrincipal (Principal {principalName = "B", principalKnows = []}),ModelMessage (Message {messageSender = "A", messageReceiver = "B", messageConstants = [(Constant {constantName = "yo"},False)]}),ModelPrincipal (Principal {principalName = "A", principalKnows = [(mkc "yo",Private)]})]}
 
 model_concat :: Text
 model_concat = $(embedStringFile "data/concat.vp")
+model_concat_ast :: Model
 model_concat_ast = Model {
   modelAttacker = Passive,
     modelParts = [
@@ -257,10 +284,11 @@ model_concat_ast = Model {
                               EConstant (Constant {constantName = "a"}),
                               EConstant (Constant {constantName = "b"})]                                                       ) HasntQuestionMark))
                   ]
-              })]}
+              }), ModelQueries []]}
 
 bad_knows_freshness :: Text
 bad_knows_freshness = $(embedStringFile "data/bad_knows_freshness.vp")
+bad_knows_freshness_ast :: Model
 bad_knows_freshness_ast = Model {
   modelAttacker = Passive,
   modelParts = [
@@ -292,13 +320,13 @@ freshness_aliased_ast = assertParseModel freshness_aliased
 
 dup1model, dup2model, dup3model, dup4model :: Model
 dup1model = Model Passive [mp "Alice" [privx, privx]]
-dup2model = Model Passive [mp "Alice" [privx, pubx]]
+dup2model = Model Passive [mp "Alice" [privx, (mkc "x", Public)]]
 dup3model = Model Passive [mp "Alice" [privx], mp "Bob" [privx]]
-dup4model = Model Passive [mp "Alice" [privx], mp "Bob" [pubx]]
-
+dup4model = Model Passive [mp "Alice" [privx], mp "Bob" [(mkc "x", Public)]]
+mp :: PrincipalName -> [(NonEmpty Constant, Knowledge)] -> ModelPart
 mp name knows = ModelPrincipal (Principal name knows)
+privx :: (NonEmpty Constant, Knowledge)
 privx = (mkc "x", Private)
-pubx = (mkc "x", Public)
 
 ------------------------------------------------------------------------------
 
@@ -316,6 +344,7 @@ foreignRingSignModel = assertParseModel foreignRingSign
 
 -- principal A[generates a; c = b ]
 -- this should give an error that "b" is unbound
+bad_assignment_to_undefined_ast :: Model
 bad_assignment_to_undefined_ast = Model {
   modelAttacker = Passive,
   modelParts = [

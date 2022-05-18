@@ -1,0 +1,52 @@
+attacker [passive]
+
+principal A [] principal B []
+
+principal A [
+  generates ga
+  pub_a = G^ga
+]
+
+A -> B: pub_a
+
+principal B [
+  generates gb
+  pub_b = G^gb
+  dh1_b = HASH(pub_a^gb)
+  dh2_b, dh2_b2 = HKDF(dh1_b, pub_a, pub_b)
+  generates msg_plain_b, msg2_plain_b, msg2key_b
+  msg_enc_b = ENC(dh1_b, CONCAT(msg_plain_b, msg2key_b))
+  leaks dh2_b, msg2key_b
+  msg2_enc_b = ENC(HASH(msg2key_b,dh2_b2), msg2_plain_b)
+]
+
+B -> A: pub_b, msg_enc_b, msg2_enc_b
+
+principal A [
+  dh1_a = HASH(pub_b^ga)
+  dh2_a, dh2_a2 = HKDF(dh1_a, pub_a, pub_b)
+  msg_plain_a, msg2key_a = SPLIT(DEC(dh1_a, msg_enc_b))
+  msg2_plain_a = DEC(HASH(msg2key_a,dh2_a2), msg2_enc_b)
+]
+
+queries [
+  confidentiality? ga
+  confidentiality? gb
+  confidentiality? dh1_a
+  confidentiality? dh1_b
+  confidentiality? msg_plain_a
+  confidentiality? msg_plain_b
+  confidentiality? msg2_plain_b
+  confidentiality? msg2_plain_b
+  equivalence? msg_plain_a, msg_plain_b
+  equivalence? dh1_a, dh1_b
+  equivalence? dh2_a, dh2_b
+  equivalence? msg2_plain_a, msg2_plain_b
+
+  // now for the non-confidential ones:
+  confidentiality? pub_a
+  confidentiality? pub_b
+  confidentiality? msg_enc_b
+  confidentiality? msg2_enc_b
+]
+

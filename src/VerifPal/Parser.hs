@@ -251,8 +251,11 @@ publicPrivatePassword = choice
 name :: Parser Text
 name = identifier "principal name"
 
+-- 3.1) Constants should be case-insensitive, hence Text.toLower.
+-- This means our later reporting might be slightly less user-friendly,
+-- but it saves use the trouble of having to keep track of lower/uppercase.
 constant :: Parser Constant
-constant = Constant <$> identifier "constant"
+constant = Constant <$> Text.toLower <$> identifier "constant"
 
 -- FIXME: "queries[...]" fails because it's being parsed as a Message sender
 identifier :: String -> Parser Text
