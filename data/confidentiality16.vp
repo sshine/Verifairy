@@ -1,0 +1,24 @@
+attacker [passive]
+principal A [
+  knows private sa, sb, sc
+  knows password ca
+]
+principal B []
+A->B: sa, sb, sc, ca
+principal B [
+   // if B can make this only using info from A, it should not be confidential:
+   inner0 = MAC(sa,sb)
+   inner1 = AEAD_ENC(sc, inner0, ca)
+   inner2 = AEAD_DEC(sc, inner1, ca)
+   outer = RINGSIGNVERIF(sc, inner1, sc, inner2, sc)
+]
+queries [
+  confidentiality? sa
+  confidentiality? sb
+  confidentiality? sc
+  confidentiality? ca
+  confidentiality? inner0
+  confidentiality? inner1
+  confidentiality? inner2
+  confidentiality? outer
+]

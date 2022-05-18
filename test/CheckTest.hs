@@ -444,25 +444,56 @@ spec_confidentiality = do
       modelState `shouldNotHaveConfidentiality` "outer"
     it "confidentiality10" $ do
       let modelState = process confidentiality10_ast
-      shouldNotFail modelState   
+      shouldNotFail modelState
       modelState `shouldNotHaveConfidentiality` "sa"
       modelState `shouldNotHaveConfidentiality` "x"
       modelState `shouldNotHaveConfidentiality` "outer"
     it "confidentiality11" $ do
       let modelState = process confidentiality11_ast
-      shouldNotFail modelState   
+      shouldNotFail modelState
       modelState `shouldNotHaveConfidentiality` "sa"
       modelState `shouldNotHaveConfidentiality` "outer"
     it "confidentiality12" $ do
       let modelState = process confidentiality12_ast
-      shouldNotFail modelState   
+      shouldNotFail modelState
       modelState `shouldNotHaveConfidentiality` "sa"
       modelState `shouldNotHaveConfidentiality` "outer"
     it "confidentiality13" $ do
       let modelState = process confidentiality13_ast
-      shouldNotFail modelState   
+      shouldNotFail modelState
       modelState `shouldNotHaveConfidentiality` "sa"
       modelState `shouldNotHaveConfidentiality` "sb"
+      modelState `shouldNotHaveConfidentiality` "outer"
+    it "confidentiality14" $ do
+      let modelState = process confidentiality14_ast
+      shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "sa"
+      modelState `shouldNotHaveConfidentiality` "sb"
+      modelState `shouldNotHaveConfidentiality` "outer"
+    it "confidentiality15" $ do
+      let modelState = process confidentiality15_ast
+      shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "sa"
+      modelState `shouldNotHaveConfidentiality` "sb"
+      modelState `shouldNotHaveConfidentiality` "outer"
+    it "confidentiality16" $ do
+      let modelState = process confidentiality16_ast
+      shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "sa"
+      modelState `shouldNotHaveConfidentiality` "sb"
+      modelState `shouldNotHaveConfidentiality` "sc"
+      modelState `shouldNotHaveConfidentiality` "ca"
+      modelState `shouldNotHaveConfidentiality` "inner0"
+      modelState `shouldNotHaveConfidentiality` "inner1"
+      modelState `shouldNotHaveConfidentiality` "inner2"
+      modelState `shouldNotHaveConfidentiality` "outer"
+    it "confidentiality17" $ do
+      let modelState = process confidentiality17_ast
+      shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "outer"
+    it "confidentiality18" $ do
+      let modelState = process confidentiality18_ast
+      shouldNotFail modelState
       modelState `shouldNotHaveConfidentiality` "outer"
 
 genKnowledge :: MonadGen m => m CanonKnowledge
@@ -475,7 +506,9 @@ genConstantWithKnowledge knowledge = do
   -- we prepend a value to the name depending on the knowledge type;
   -- this ensure we do not generate constants with differing knowledge types
   -- (which is a type error); without having to get into MonadState territory
-  let uname = Data.Text.unpack name'
+  let uname = Data.Text.unpack (Data.Text.toLower name')
+      -- toLower: FIXME this goes hand in hand with the Parser.hs hack which
+      --          lowercases to prevent case mismatch problems
       uname' = case knowledge of
         CPrivate -> 's':uname -- "secret"
         CPublic -> 'p':uname -- "public"

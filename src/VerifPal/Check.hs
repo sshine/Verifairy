@@ -26,6 +26,7 @@ import Data.Graph.Inductive.Query.SP
 
 --import Data.Graph.Inductive.PatriciaTree
 import Data.Graph.Inductive.Query.TransClos
+import qualified Data.Graph.Inductive.Query.DFS
 
 data ModelError
   = OverlappingConstant Constant
@@ -103,6 +104,9 @@ upsertMapNodeM v = do
 
 upsertEdgeM :: (CanonExpr, CanonExpr, Set (Set CanonExpr)) -> NodeMapM CanonExpr (Set (Set CanonExpr)) Gr ()
 upsertEdgeM edge@(a,b,ssc) = do
+  -- FIXME we currently have a problem in that HasQuestionMark / HasntQuestionMark
+  -- causes trivial comparison with == to fail, so perhaps we should
+  -- insert both here? or get rid of it from CanonExpr ?
   (nm, g) <- get
   let (a_node, _) = mkNode_ nm a -- get the numeric Node corresponding to label a
       (b_node, _) = mkNode_ nm b
@@ -119,7 +123,14 @@ upsertEdgeM edge@(a,b,ssc) = do
   if updated then pure () else do
     insMapEdgeM edge
     pure ()
-      
+
+upsertEdgePermutationsM :: [CanonExpr] -> CanonExpr -> NodeMapM CanonExpr (Set (Set CanonExpr)) Gr ()
+upsertEdgePermutationsM args lead_to = do
+  let arg_set = Set.fromList args
+  foldM (\() x -> do
+            upsertEdgeM (x, lead_to, Set.singleton $ Set.difference arg_set (Set.singleton x))
+            pure ()
+        ) () args
 -- https://hackage.haskell.org/package/containers-0.6.5.1/docs/Data-Set.html
 --
 --  Nodes: CanonExpr
@@ -165,40 +176,35 @@ buildKnowledgeGraph ms = do
             -- learn msg by knowing ENC(key,msg) & key
             upsertEdgeM (simpl,s_msg,(Set.singleton $ Set.singleton s_key))
             -- reencrypt by knowing key & msg:
-            upsertEdgeM (s_key,simpl,(Set.singleton $ Set.singleton s_msg))
-            upsertEdgeM (s_msg,simpl,(Set.singleton $ Set.singleton s_key))
+            upsertEdgePermutationsM [s_key,s_msg] simpl
             pure simpl
           CPrimitive (DEC key ciphertext) _ -> do
             s_key <- foldCanonExpr key
             s_ciphertext <- foldCanonExpr ciphertext
             -- attacker can DEC() if they know key & ciphertext:
-            upsertEdgeM (s_key, simpl, Set.singleton $ Set.singleton s_ciphertext)
+            upsertEdgePermutationsM [s_key,s_ciphertext] simpl
             -- attacker can ENC() if they know key & simpl:
             upsertEdgeM (simpl, s_ciphertext, Set.singleton $ Set.singleton s_key)
             pure simpl
           CPrimitive (AEAD_ENC key plaintext ad) _ -> do
-            _ <- foldCanonExpr key
-            _ <- foldCanonExpr plaintext
-            _ <- foldCanonExpr ad
+            s_key <- foldCanonExpr key
+            s_plaintext <- foldCanonExpr plaintext
+            s_ad <- foldCanonExpr ad
             -- attacker can compute AEAD_ENC() if they know all the args:
-            upsertEdgeM (key, simpl, Set.singleton $ Set.fromList [plaintext, ad])
-            upsertEdgeM (ad, simpl, Set.singleton $ Set.fromList [plaintext, key])
-            upsertEdgeM (plaintext, simpl, Set.singleton $ Set.fromList [key, ad])
+            upsertEdgePermutationsM [s_key,s_plaintext,s_ad] simpl
             -- attacker can decrypt if they know key and ad:
             -- TODO can attackers decrypt it without knowing AD? this seems
             -- TODO worth documenting as it might not correspond to how people
             -- TODO define AEADs? (ie is the key derived from HASH(ad), or is ad
             -- TODO only relevant for verifying the mac?)
-            upsertEdgeM (simpl, plaintext, Set.singleton $ Set.fromList [key, ad])
+            upsertEdgeM (simpl, s_plaintext, Set.singleton $ Set.fromList [s_key, s_ad])
             pure simpl
           CPrimitive (AEAD_DEC key ciphertext ad) _ -> do
-            _ <- foldCanonExpr key
-            _ <- foldCanonExpr ciphertext
-            _ <- foldCanonExpr ad
+            s_key <- foldCanonExpr key
+            s_ciphertext <- foldCanonExpr ciphertext
+            s_ad <- foldCanonExpr ad
             -- attacker can decrypt if they know args:
-            upsertEdgeM (key, simpl, Set.singleton $ Set.fromList [ciphertext,ad])
-            upsertEdgeM (ciphertext, simpl, Set.singleton $ Set.fromList [key,ad])
-            upsertEdgeM (ad, simpl, Set.singleton $ Set.fromList [key,ciphertext])
+            upsertEdgePermutationsM [s_key,s_ciphertext,s_ad] simpl
             -- attacker can re-encrypt:
             upsertEdgeM (simpl, ciphertext, Set.singleton $ Set.fromList [key,ad])
             pure simpl
@@ -209,13 +215,13 @@ buildKnowledgeGraph ms = do
                                  ) [] lst
             let simple_set = Set.fromList simple_lst
             -- attacker can reconstruct if they know all the arguments:
+            -- knowing x,.. leads to CONCAT(x,..)
+            upsertEdgePermutationsM simple_lst simpl
             -- TODO wtf: why does "nil," work here but "attacker," doesn't?
             upsertEdgeM (nil,simpl,Set.singleton $ simple_set)
             () <- foldM (\() x -> do
                            -- knowing CONCAT(x,..) leads to knowing x,..
                            upsertEdgeM (simpl,x, edge_always)
-                           -- knowing x,.. leads to CONCAT(x,..)
-                           upsertEdgeM (x,simpl, Set.singleton $ Set.difference simple_set (Set.singleton x))
                            pure ()
                        ) () simple_lst
             pure simpl
@@ -229,11 +235,7 @@ buildKnowledgeGraph ms = do
                 -- anyone can do this:
                 upsertEdgeM (nil,simpl, edge_always)
               _:_ -> do
-                let lstset = Set.fromList simple_lst
-                foldM_ (\() x -> do
-                            upsertEdgeM (x, simpl, Set.singleton $ Set.difference lstset (Set.singleton x))
-                            pure ()
-                        ) () hash_lst
+                upsertEdgePermutationsM simple_lst simpl -- TODO also hash_lst?
             pure simpl
           CItem n wever -> do
             s_wever <- foldCanonExpr wever
@@ -270,8 +272,7 @@ buildKnowledgeGraph ms = do
             s_lhs <- foldCanonExpr lhs
             s_rhs <- foldCanonExpr rhs
             -- attacker can calculate powers
-            upsertEdgeM (s_lhs, simpl, Set.singleton $ Set.singleton s_rhs)
-            upsertEdgeM (s_rhs, simpl, Set.singleton $ Set.singleton s_lhs)
+            upsertEdgePermutationsM [s_lhs, s_rhs] simpl
             -- TODO knowing G^a^b leads to knowing G^b^a:
             -- TODO is this really wonky?
             case s_lhs of
@@ -289,7 +290,7 @@ buildKnowledgeGraph ms = do
               _ -> pure simpl
           CPrimitive (ASSERT _ _) _ -> do
             -- TODO this is kind of a special case in that ASSERT() can reference
-            -- variables unknown to the principal. It should not be allowed to
+            -- variables unknown to the principal(??) It should not be allowed to
             -- capture the output of ASSERT() ???
             pure simpl
           CPrimitive (SPLIT exp) _ -> do
@@ -313,17 +314,14 @@ buildKnowledgeGraph ms = do
             -- MAC produces a hash, so neither key/msg are leaked,
             -- but the attacker does get to reconstruct it if they know
             -- the key and the msg:
-            upsertEdgeM (s_key, simpl, Set.singleton $ Set.singleton s_msg)
-            upsertEdgeM (s_msg, simpl, Set.singleton $ Set.singleton s_key)
+            upsertEdgePermutationsM [s_key,s_msg] simpl
             pure simpl
           CPrimitive (HKDF salt ikm info) _ -> do
             s_salt <- foldCanonExpr salt
             s_ikm <- foldCanonExpr ikm
             s_info <- foldCanonExpr info
             -- attacker can reconstruct this by knowing the args:
-            upsertEdgeM (s_salt, simpl, Set.singleton $ Set.fromList [s_ikm,s_ikm])
-            upsertEdgeM (s_ikm, simpl, Set.singleton $ Set.fromList [s_salt, s_info])
-            upsertEdgeM (s_info, simpl, Set.singleton $ Set.fromList [s_salt, s_ikm])
+            upsertEdgePermutationsM [s_salt,s_ikm,s_info] simpl
             pure simpl
           CPrimitive (PW_HASH []) _ -> do
             upsertEdgeM (nil, simpl, edge_always)
@@ -334,10 +332,7 @@ buildKnowledgeGraph ms = do
                                      pure (x:acc)
                                  ) [] hash_lst
             -- attacker can compute PW_HASH if it knows the args:
-            let lstset = Set.fromList simple_lst
-            foldM_ (\() x -> do
-                       upsertEdgeM (x, simpl, Set.singleton $ Set.difference lstset (Set.singleton x))
-                   ) () simple_lst
+            upsertEdgePermutationsM simple_lst simpl
             pure simpl
           CPrimitive (SIGN key message) _ -> do
             s_key <- foldCanonExpr key
@@ -350,9 +345,7 @@ buildKnowledgeGraph ms = do
             s_pk <- foldCanonExpr pk
             s_msg <- foldCanonExpr message
             s_signed <- foldCanonExpr signed
-            upsertEdgeM (s_pk, simpl, Set.singleton $ Set.fromList [s_msg, s_signed])
-            upsertEdgeM (s_msg, simpl, Set.singleton $ Set.fromList [s_pk, s_signed])
-            upsertEdgeM (s_signed, simpl, Set.singleton $ Set.fromList [s_pk, s_msg])
+            upsertEdgePermutationsM [s_pk,s_msg,s_signed] simpl
             -- TODO not sure what the semantics for this is...
             -- TODO for now we let the attacker know the message regardless of the other parameters:
             upsertEdgeM (simpl, s_msg, edge_always)
@@ -369,11 +362,7 @@ buildKnowledgeGraph ms = do
             s_pk_b <- foldCanonExpr pk_b
             s_pk_c <- foldCanonExpr pk_c
             s_message <- foldCanonExpr message
-            let simple_set = Set.singleton $ Set.fromList [s_key, s_pk_b, s_pk_c, s_message]
-            upsertEdgeM (s_key, simpl, simple_set)
-            upsertEdgeM (s_pk_b, simpl, simple_set)
-            upsertEdgeM (s_pk_c, simpl, simple_set)
-            upsertEdgeM (s_message, simpl, simple_set)
+            upsertEdgePermutationsM [s_key, s_pk_b, s_pk_c, s_message] simpl
             pure simpl
           CPrimitive (RINGSIGNVERIF a b c msg sig) _ -> do
             s_a <- foldCanonExpr a
@@ -382,11 +371,8 @@ buildKnowledgeGraph ms = do
             s_msg <- foldCanonExpr msg
             s_sig <- foldCanonExpr sig
             -- can reconstruct args:
-            upsertEdgeM (s_a, simpl, Set.singleton $ Set.fromList [s_b,s_c,s_msg,s_sig])
-            upsertEdgeM (s_b, simpl, Set.singleton $ Set.fromList [s_a,s_c,s_msg,s_sig])
-            upsertEdgeM (s_c, simpl, Set.singleton $ Set.fromList [s_a,s_b,s_msg,s_sig])
-            upsertEdgeM (s_msg, simpl, Set.singleton $ Set.fromList [s_a,s_b,s_c,s_sig])
-            upsertEdgeM (s_sig, simpl, Set.singleton $ Set.fromList [s_a,s_b,s_c,s_msg])
+            upsertEdgePermutationsM [s_a,s_b,s_c,s_msg,s_sig] simpl
+            upsertEdgePermutationsM [a,b,c,msg,sig] simpl
             -- simpl leads to msg either way:
             upsertEdgeM (simpl, s_msg, edge_always)
             pure simpl -- TODO
@@ -394,8 +380,7 @@ buildKnowledgeGraph ms = do
             s_k <- foldCanonExpr k
             s_m <- foldCanonExpr m
             -- reconstruct:
-            upsertEdgeM (s_k, simpl, Set.singleton $ Set.singleton s_m)
-            upsertEdgeM (s_m, simpl, Set.singleton $ Set.singleton s_k)
+            upsertEdgePermutationsM [s_k,s_m] simpl
             -- TODO do we need more edges here?
             pure simpl
           CPrimitive (UNBLIND key msg signed) _ -> do
@@ -403,9 +388,7 @@ buildKnowledgeGraph ms = do
             s_msg <- foldCanonExpr msg
             s_signed <- foldCanonExpr signed
             -- reconstruct:
-            upsertEdgeM (s_key, simpl, Set.singleton $ Set.fromList [s_msg,s_signed])
-            upsertEdgeM (s_msg, simpl, Set.singleton $ Set.fromList [s_key,s_signed])
-            upsertEdgeM (s_signed, simpl, Set.singleton $ Set.fromList [s_key,s_msg])
+            upsertEdgePermutationsM [s_key,s_msg,s_signed] simpl
             case s_signed of
               CPrimitive (SIGN a (CPrimitive (BLIND k m) _)) _
                 | equivalenceExpr s_key k && equivalenceExpr s_msg m -> do
@@ -433,20 +416,14 @@ buildKnowledgeGraph ms = do
             -- let sj0 = CPrimitive (SHAMIR_JOIN share0 share1) HasntQuestionMark
             --     sj1 = CPrimitive (SHAMIR_JOIN share0 share2) HasntQuestionMark
             --     sj2 = CPrimitive (SHAMIR_JOIN share1 share2) HasntQuestionMark
-            -- 
-            upsertEdgeM (share0, s_exp, Set.fromList [
-                            Set.singleton share1, Set.singleton share2])
-            upsertEdgeM (share1, s_exp, Set.fromList [
-                            Set.singleton share0, Set.singleton share2])
-            upsertEdgeM (share2, s_exp, Set.fromList [
-                            Set.singleton share0, Set.singleton share1])
+            --
+            upsertEdgePermutationsM [share0, share1, share2] s_exp
             pure simpl
           CPrimitive (SHAMIR_JOIN a b) _ -> do
             -- TODO this is pretty dodgy
             s_a <- foldCanonExpr a
             s_b <- foldCanonExpr b
-            upsertEdgeM (s_a, simpl, Set.singleton $ Set.singleton s_b)
-            upsertEdgeM (s_b, simpl, Set.singleton $ Set.singleton s_a)
+            upsertEdgePermutationsM [s_a,s_b] simpl
             case (a,b) of
               (CItem na (CPrimitive (SHAMIR_SPLIT exp1) _),
                CItem nb (CPrimitive (SHAMIR_SPLIT exp2) _))
@@ -461,23 +438,20 @@ buildKnowledgeGraph ms = do
           CPrimitive (PKE_ENC pk plaintext) _ -> do
             s_pk <- foldCanonExpr pk
             s_plaintext <- foldCanonExpr plaintext
-            upsertEdgeM (s_plaintext, simpl, Set.singleton $ Set.singleton s_pk)
-            upsertEdgeM (s_pk, simpl, Set.singleton $ Set.singleton s_plaintext)
+            upsertEdgePermutationsM [s_plaintext, s_pk] simpl
             case s_pk of
               CG secret -> do
                 -- attacker can decrypt if the know secret and simpl:
-                upsertEdgeM (secret, s_plaintext, Set.singleton $ Set.singleton simpl)
-                upsertEdgeM (simpl, s_plaintext, Set.singleton $ Set.singleton secret)
+                upsertEdgePermutationsM [secret,simpl] s_plaintext
                 pure simpl
               _ -> pure simpl -- TODO this should be a type error?
           CPrimitive (PKE_DEC key ciphertext) _ -> do
             s_key <- foldCanonExpr key
             s_ciphertext <- foldCanonExpr ciphertext
             -- reconstruct from args:
-            upsertEdgeM (s_key, simpl, Set.singleton $ Set.singleton s_ciphertext)
-            upsertEdgeM (s_ciphertext, simpl, Set.singleton $ Set.singleton s_key)
+            upsertEdgePermutationsM [s_key,s_ciphertext] simpl
             -- re-encrypt:
-            upsertEdgeM (simpl, s_ciphertext, Set.singleton $ Set.singleton s_key)
+            upsertEdgePermutationsM [simpl,s_key] s_ciphertext
             pure simpl
           --unhandledTODO -> do -- TODO only here to help detect unhandled cases
           --  Debug.Trace.traceShow unhandledTODO $ pure simpl
@@ -516,6 +490,9 @@ buildKnowledgeGraph ms = do
                         _ -> pure ()
                   ) () $ Map.assocs principalMap
             pure () ) () $ Map.assocs $ msPrincipalConstants ms
+  -- TODO FIXME assert that Data.Graph.Inductive.Query.DFS.isConnected g holds
+  -- for the monad result (_, g) <- get  ; ie that we didn't add nodes that can't
+  -- be reached from any of the other nodes.
 
 process :: Model -> ModelState
 process model =
@@ -539,16 +516,55 @@ computePrincipalKnowledge :: Text -> State ModelState (Set CanonExpr)
 computePrincipalKnowledge principalName = do
   g <- gets msConfidentialityGraph
   --let g' = elfilter (\ssc -> True) (unOrdGr g)
-  --let _trc = Data.Graph.Inductive.Query.TransClos.trc (unOrdGr g)
+  let g_trc = Data.Graph.Inductive.Query.TransClos.trc (unOrdGr g)
+      attacker_reachable = Data.Graph.Inductive.Query.DFS.reachable attacker (unOrdGr g)
+      g_attacker_might_trc :: Gr CanonExpr ()
+      g_attacker_might_trc = subgraph (neighbors g_trc attacker) g_trc
+      -- this is the trc of the potential attacker knowledge with the original edges:
+      g_attacker_might = gfiltermap restoreEdges g_attacker_might_trc
+      edgeMap :: Map (Node, Node) (Set (Set CanonExpr))
+      edgeMap = ufold (
+        \(b_in, v_node, _, b_out) acc -> do
+          let acc2 = foldl' (\acc2' (e,n) -> Map.insert (n     , v_node) e acc2') acc b_in
+              acc3 = foldl' (\acc3' (e,n) -> Map.insert (v_node, n) e      acc3') acc2 b_out
+          acc3
+        ) Map.empty (unOrdGr g)
+      restoreEdges :: Context CanonExpr () -> MContext CanonExpr (Set (Set CanonExpr))
+      restoreEdges (b_in,v_node,v_label,b_out) =
+        let findLabels f lst =
+              Data.List.foldl' (
+              \acc (s,n) -> case (acc, (Map.lookup (f n) edgeMap)) of
+                              (Nothing, _) -> Nothing
+                              (_, Nothing) -> Nothing
+                              (Just adjs, Just eset) -> Just ((eset,n):adjs)
+              ) (Just []) lst
+            b_in' :: Maybe (Adj (Set (Set CanonExpr)))
+            b_in'  = findLabels (\e_node -> (e_node,v_node)) b_in
+            b_out' = findLabels (\e_node -> (v_node,e_node)) b_out
+        in case (b_in', b_out') of
+          --(Nothing, _) -> Nothing
+          --(_, Nothing) -> Nothing
+          (Just in_adj, Just out_adj) -> do
+            Just (in_adj,v_node,v_label,out_adj)
   -- nm = Data.Graph.Inductive.NodeMap.fromGraph (unOrdGr g)
   --constmap <- gets msConstants
-  let rg :: Gr CanonExpr PT
+      rg :: Gr CanonExpr PT
       rg = gfiltermap addWeightToEdges (unOrdGr g)
-  let attackerConst = CConstant (Constant principalName) CPrivate
+      attackerConst = CConstant (Constant principalName) CPrivate
       attackerL = labfilter ((==) attackerConst) $ unOrdGr g
       attacker = case nodes attackerL of
         [n] -> n
         _ -> 1 -- TODO this should never be reached
+      learn_from_graph :: Set CanonExpr -> (Set CanonExpr, Gr CanonExpr (Set (Set CanonExpr)))
+      learn_from_graph currently_known =
+        let known_edges = Data.List.filter (\(n,n',preconditions) -> any (\s -> s `Set.isSubsetOf` currently_known) preconditions) $ labEdges (unOrdGr g)
+            -- now we need to get the nodes that the attacker can see.
+            reachability' :: Gr CanonExpr ()
+            reachability' = Data.Graph.Inductive.Query.TransClos.trc $ mkGraph (labNodes (unOrdGr g)) known_edges
+            -- get the nodes from (g) that are reachable from the attacker:
+            known_graph = subgraph (neighbors reachability' attacker) (unOrdGr g)
+            new_set = Set.fromList $ Data.List.map snd (labNodes known_graph)
+        in (new_set, known_graph) --(Set.union new_set currently_known, known_graph)
   case Data.Graph.Inductive.Query.SP.spTree attacker rg of
     [] -> pure Set.empty
     paths -> do
@@ -574,7 +590,7 @@ computePrincipalKnowledge principalName = do
                 --    res = pure (True, Set.insert (simplifyExpr c_expr) $ (Set.insert c_expr) thisSet)
                 let simpl = simplifyExpr c_expr
                     -- FIXME inserting (SPLIT simpl)+(CG simpl) here is a total hack:
-                    res = Set.insert (CPrimitive (SPLIT simpl) HasntQuestionMark) $ Set.insert (CG simpl) $ Set.insert simpl $ (Set.insert c_expr thisSet)
+                    res = Set.insert (CPrimitive (SPLIT simpl) HasQuestionMark) $ Set.insert (CPrimitive (SPLIT simpl) HasntQuestionMark) $ Set.insert (CG simpl) $ Set.insert simpl $ (Set.insert c_expr thisSet)
                 if Set.member simpl thisSet
                   then (True, res) -- already know this
                   else do
@@ -602,27 +618,20 @@ computePrincipalKnowledge principalName = do
           todo_news = while_new news
           while_new :: Set CanonExpr -> Set CanonExpr
           while_new old =
-            let newer = foldPaths old in
+            let newer = fst $ learn_from_graph old in --(foldPaths old) in
             if old == newer
             then old -- nothing new learned, we are done
             else while_new newer -- we learned something new, try again
       --_ <- Debug.Trace.traceShow todo_news $ pure ()
-      let --uniq_edges = Set.toList$ Set.fromList $ labEdges (unOrdGr g)
-          --relevant_edges :: [LEdge CanonExpr]
-          --relevant_edges = Set.toList $
-          --                Set.filter (\(n,n',a) -> Set.member a todo_news) uniq_edges
-          -- uniqGraph = mkGraph (labNodes (unOrdGr g)) uniq_edges
-          --filteredGraph = labfilter (\x -> Set.member x todo_news) (unOrdGr g)
-          cool_edges = Data.List.filter (\(n,n',pres) -> any (\s -> s `Set.isSubsetOf` todo_news) pres) $ labEdges (unOrdGr g)
-          filteredGraph' :: Gr CanonExpr ()
-          filteredGraph' = Data.Graph.Inductive.Query.TransClos.trc $ mkGraph (labNodes (unOrdGr g)) cool_edges
-          filteredGraph = subgraph (neighbors filteredGraph' attacker) (unOrdGr g)
+      let (latest_attacker_knowl, filteredGraph) = learn_from_graph todo_news
       mpcgm <- gets msPrincipalConfidentialityGraph
       let new_g = Map.insert principalName (OrdGr filteredGraph) mpcgm
       modify $ \st -> do
         st{msPrincipalConfidentialityGraph = new_g}
       -- FIXME ideally this thing should be equal to todo_news, but alas it's not:
-      pure (Set.fromList $ Data.List.map snd (labNodes filteredGraph))
+      --Debug.Trace.traceShow ("em cardinal"::Text, Map.size edgeMap, "g cardinal"::Text, size (unOrdGr g)) $
+      --  Debug.Trace.traceShow ("g_attacker_might"::Text, g_attacker_might) $
+      pure latest_attacker_knowl
 
 processModelPart :: ModelPart -> State ModelState ()
 processModelPart (ModelPrincipal (Principal name knows)) = do
@@ -754,7 +763,7 @@ processQuery query@(Query (FreshnessQuery constant) _TODO_queryOptions) = do
 processQuery query@(Query (ConfidentialityQuery constant) _TODO_queryOptions) = do
   constantExistsOrError constant
   constmap <- gets msConstants
-  attackerSet <- computePrincipalKnowledge "attacker"
+  attackerSet <- computePrincipalKnowledge "attacker" -- TODO computing this for each query is stupid, we should cache it
   let canon_constant :: CanonExpr
       canon_constant = simplifyExpr $ canonicalizeExpr constmap (EConstant (constant))
       attacker_knows = foldl (\knows cexpr -> knows || equivalenceExpr cexpr canon_constant) False attackerSet

@@ -1,0 +1,29 @@
+attacker [passive]
+principal A [
+  knows private sa, sb, sc
+]
+
+principal B []
+A -> B: sa, sb, sc
+
+principal B [
+  outer = CONCAT(
+    MAC(
+      AEAD_DEC(
+        sc,
+	AEAD_ENC(
+	  sc,
+	  MAC(sa, sb)?,
+	  sa
+	)?,
+	sa
+      )?,
+      sa
+    )?,
+    PW_HASH(G^sa)?
+  )?
+]
+
+queries [
+  confidentiality? outer
+]

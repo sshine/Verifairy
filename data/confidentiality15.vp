@@ -1,0 +1,20 @@
+attacker [passive]
+principal A [
+  knows private sa, sb
+  leaks sa, sb
+  // this is a regression test; outer stayed confidential with this:
+  outer = CONCAT(SPLIT(G^sa)?, SPLIT(G^sb)?)
+  // but not with any of these: (and commenting any of these out resulted in
+  // (outer) being obtained by the attacker):
+  //outer2 = CONCAT(SPLIT(G^sa), SPLIT(G^sb))
+  //outer3 = CONCAT(SPLIT(G^sa), SPLIT(G^sb)?)
+  //outer4 = CONCAT(SPLIT(G^sa)?, SPLIT(G^sb))
+]
+queries [
+  confidentiality? sa
+  confidentiality? sb
+  confidentiality? outer
+  //confidentiality? outer2
+  //confidentiality? outer3
+  //confidentiality? outer4
+]
