@@ -1,0 +1,17 @@
+attacker [passive]
+principal A []
+principal B [
+  knows password pw, pw2, pw3, pw4
+  hashed_pw = HASH(pw)
+  hashed_pw23 = HASH(pw2, pw3)
+  hashed_pw4 = PW_HASH(pw4)
+]
+B -> A: hashed_pw, hashed_pw23, hashed_pw4
+
+queries [
+  confidentiality? hashed_pw
+  confidentiality? pw
+  confidentiality? pw2
+  confidentiality? pw3
+  confidentiality? pw4
+]

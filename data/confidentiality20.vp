@@ -1,0 +1,12 @@
+attacker [passive]
+principal A [
+  knows password msg
+  knows private sa
+  encx = ENC(msg, sa)
+  leaks encx
+]
+queries [
+  confidentiality? encx // no, leaked
+  confidentiality? msg // no, bruteforced
+  confidentiality? sa  // no, decrypted from (encx) using (msg)
+]

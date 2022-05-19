@@ -17,15 +17,15 @@ import Data.List
 import Data.List.NonEmpty
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Debug.Trace(traceShow)
+--import Debug.Trace(traceShow)
 
 import Data.Graph.Inductive.Graph() -- (mkGraph, LNode, LEdge, OrdGr, DynGraph(..), empty, Graph, gfiltermap)
 import Data.Graph.Inductive.Basic() -- (elfilter)
 import Data.Graph.Inductive.NodeMap() --fromGraph)--,NodeMap(..))
-import Data.Graph.Inductive.Query.SP
+--import Data.Graph.Inductive.Query.SP
 
 --import Data.Graph.Inductive.PatriciaTree
-import Data.Graph.Inductive.Query.TransClos
+--import Data.Graph.Inductive.Query.TransClos
 import qualified Data.Graph.Inductive.Query.DFS
 
 data ModelError
@@ -124,14 +124,30 @@ upsertEdgeM edge@(a,b,ssc) = do
     insMapEdgeM edge
     pure ()
 
+exprALeadsToPasswordB_ifC_M :: CanonExpr -> CanonExpr -> Set CanonExpr -> NodeMapM CanonExpr (Set (Set CanonExpr)) Gr ()
+exprALeadsToPasswordB_ifC_M (CPrimitive (PW_HASH _) _) _ _ = pure ()
+exprALeadsToPasswordB_ifC_M simpl pw@(CConstant _ CPassword) c = do
+  -- by 3.2) we let the attacker bruteforce passwords if they do not
+  -- come from a PW_HASH() function
+  -- TODO FIXME see note in hprop_bruteforcePasswords regarding how the approach
+  -- taken here is broken.
+  let c_filtered = Set.filter (
+        \y -> case y of
+                CConstant _ CPassword -> False
+                _ -> True
+        )  c
+  upsertEdgeM (simpl, pw, Set.singleton $ c_filtered) -- TODO instead of Set.empty we can toggle the bruteforce stuff by using a fake node?
+exprALeadsToPasswordB_ifC_M _ _ _ = pure ()
+
 upsertEdgePermutationsM :: [CanonExpr] -> CanonExpr -> NodeMapM CanonExpr (Set (Set CanonExpr)) Gr ()
 upsertEdgePermutationsM args lead_to = do
   let arg_set = Set.fromList args
   foldM (\() x -> do
-            upsertEdgeM (x, lead_to, Set.singleton $ Set.difference arg_set (Set.singleton x))
-            pure ()
+            let diffset = Set.difference arg_set (Set.singleton x)
+            upsertEdgeM (x, lead_to, Set.singleton $ diffset)
+            exprALeadsToPasswordB_ifC_M lead_to x diffset
         ) () args
--- https://hackage.haskell.org/package/containers-0.6.5.1/docs/Data-Set.html
+
 --
 --  Nodes: CanonExpr
 --    -- unlocked by: Set of Set of CanonExpr
@@ -173,6 +189,8 @@ buildKnowledgeGraph ms = do
           CPrimitive (ENC key msg) _ -> do
             s_key <- foldCanonExpr key
             s_msg <- foldCanonExpr msg
+            -- the key can be bruteforced:
+            exprALeadsToPasswordB_ifC_M simpl s_key Set.empty
             -- learn msg by knowing ENC(key,msg) & key
             upsertEdgeM (simpl,s_msg,(Set.singleton $ Set.singleton s_key))
             -- reencrypt by knowing key & msg:
@@ -190,6 +208,8 @@ buildKnowledgeGraph ms = do
             s_key <- foldCanonExpr key
             s_plaintext <- foldCanonExpr plaintext
             s_ad <- foldCanonExpr ad
+            -- the key can be bruteforced:
+            --exprALeadsToPasswordB_ifC_M simpl s_key Set.empty
             -- attacker can compute AEAD_ENC() if they know all the args:
             upsertEdgePermutationsM [s_key,s_plaintext,s_ad] simpl
             -- attacker can decrypt if they know key and ad:
@@ -265,6 +285,8 @@ buildKnowledgeGraph ms = do
             pure simpl -- the attacker knows nothing, john snow
           CG secret -> do
             s_secret <- foldCanonExpr secret
+            -- allow bruteforcing G^pw:
+            exprALeadsToPasswordB_ifC_M simpl s_secret Set.empty
             -- attacker can always lift to the power of G
             upsertEdgeM (s_secret, simpl, edge_always)
             pure simpl
@@ -338,8 +360,7 @@ buildKnowledgeGraph ms = do
             s_key <- foldCanonExpr key
             s_msg <- foldCanonExpr message
             -- attacker can reconstruct from args:
-            upsertEdgeM (s_key,simpl,Set.singleton $ Set.singleton s_msg)
-            upsertEdgeM (s_msg,simpl,Set.singleton $ Set.singleton s_key)
+            upsertEdgePermutationsM [s_key,s_msg] simpl
             pure simpl
           CPrimitive (SIGNVERIF pk message signed) _ -> do
             s_pk <- foldCanonExpr pk
@@ -453,22 +474,9 @@ buildKnowledgeGraph ms = do
             -- re-encrypt:
             upsertEdgePermutationsM [simpl,s_key] s_ciphertext
             pure simpl
-          --unhandledTODO -> do -- TODO only here to help detect unhandled cases
-          --  Debug.Trace.traceShow unhandledTODO $ pure simpl
-          -- case False of
-          --    True -> pure () -- can never happen, this is a crash assertion
-          --  pure simpl -- TODO remove this
   foldM (\st (const,_knowledge) -> do
-            --insMapNodeM (knowledge)
             let c_expr = canonicalizeExpr constmap (EConstant const)
             _ <- foldCanonExpr c_expr
-            --  CConstant c2 _knowl -> insMapNodeM c2
-            --  CPrimitive (ENC key msg) _ ->
-            --   foldConstantsInExpr
-            --  _ -> insMapNodeM const
-            --case knowledge of
-            --  Ass
-            --upsertEdgeM (const,const,c_expr)
             pure st
         ) () (Map.assocs constmap)
   foldM (\() (principalName, principalMap) -> do
@@ -530,8 +538,8 @@ restoreEdges g (b_in,v_node,v_label,b_out) =
       b_in'  = findLabels (\e_node -> (e_node,v_node)) b_in
       b_out' = findLabels (\e_node -> (v_node,e_node)) b_out
   in case (b_in', b_out') of
-    --(Nothing, _) -> Nothing
-    --(_, Nothing) -> Nothing
+    (Nothing, _) -> Nothing
+    (_, Nothing) -> Nothing
     (Just in_adj, Just out_adj) -> Just (in_adj,v_node,v_label,out_adj)
 
 -- computes the set of all expr reachable by the given principal.
@@ -540,14 +548,21 @@ computePrincipalKnowledge :: Text -> State ModelState (Set CanonExpr)
 computePrincipalKnowledge principalName = do
   g <- gets msConfidentialityGraph
   let ug = unOrdGr g
-      g_trc = Data.Graph.Inductive.Query.TransClos.trc ug
       attacker_reachable_n = Data.Graph.Inductive.Query.DFS.reachable attacker ug
       g_attacker_reachable = subgraph attacker_reachable_n ug
       reachable_edges = labEdges g_attacker_reachable
       reachable_nodes = labNodes g_attacker_reachable
+      -- computing trc was an elegant solution, but it requires us to do bookkeping
+      -- for each of the transitively collapsed edges such that
+      --   a [[1],  [2]  ] -> b[[3]] -> c
+      -- becomes
+      --   a [[1],  [2]  ] -> b
+      --   a [[1,3],[2,3]] -> c
+      -- that would likely result in a considerable speedup.
+      -- keeping the old stuff commented-out here:
+      --g_trc = Data.Graph.Inductive.Query.TransClos.trc ug
       --g_attacker_might_trc :: Gr CanonExpr ()
       --g_attacker_might_trc = subgraph (neighbors g_trc attacker) g_trc
-      -- this is the trc of the potential attacker knowledge with the original edges:
       --g_attacker_might = gfiltermap (restoreEdges (unOrdGr g)) g_attacker_might_trc
       attackerConst = CConstant (Constant principalName) CPrivate
       -- TODO this is kind of awkward; ideally we should use the NodeMap to look it
@@ -558,6 +573,9 @@ computePrincipalKnowledge principalName = do
         _ -> 1 -- TODO this should never be reached
       learn_from_graph :: Set CanonExpr -> (Set CanonExpr, Gr CanonExpr (Set (Set CanonExpr)))
       learn_from_graph currently_known =
+        -- TODO if attacker can find a path to a (CConstant _ CPassword)
+        -- that does not go through a PW_HASH iteration, that means the attacker
+        -- can bruteforce it.
         let known_edges = Data.List.filter (
               \(_,_,preconditions) -> any (
                 \s -> s `Set.isSubsetOf` currently_known

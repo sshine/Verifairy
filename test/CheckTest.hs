@@ -25,7 +25,7 @@ import VerifPal.Check (process, ModelState(..), ModelError(..), ProcessingCounte
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Graph.Inductive (mkGraph, OrdGr(..))
-import Debug.Trace(traceShow)
+--import Debug.Trace(traceShow)
 import Cases
 
 lhsConst :: Text -> NonEmpty.NonEmpty Constant
@@ -495,14 +495,59 @@ spec_confidentiality = do
       let modelState = process confidentiality18_ast
       shouldNotFail modelState
       modelState `shouldNotHaveConfidentiality` "outer"
+    it "confidentiality19 HASH(password)" $ do
+      let modelState = process confidentiality19_ast
+      shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "pw"
+      modelState `shouldNotHaveConfidentiality` "hashed_pw"
+      modelState `shouldNotHaveConfidentiality` "pw2"
+      modelState `shouldNotHaveConfidentiality` "pw3"
+    it "confidentiality20 ENC(pw,sa) -> sa" $ do
+      let modelState = process confidentiality20_ast
+      shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "encx"
+      modelState `shouldNotHaveConfidentiality` "msg"
+      modelState `shouldNotHaveConfidentiality` "sa"
+    it "confidentiality21 MAC(G^pw,)" $ do
+      let modelState = process confidentiality21_ast
+      shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "ctarget"
+    it "confidentiality22 HKDF(sa,HASH(ctarget)?,sa)? -> ctarget" $ do
+      let modelState = process confidentiality22_ast
+      shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "ctarget22"
+    it "confidentiality23 MAC(PW_HASH(sa),G^ctarget) -> ctarget" $ do
+      let modelState = process confidentiality23_ast
+      shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "ctarget23"
+    it "foreign_models/verifpal/test/ql.vp" $ do
+      let modelState = process foreign_verifpal_test_ql_ast
+      shouldNotFail modelState
+      modelState `shouldHaveConfidentiality` "e"
+    it "foreign_models/verifpal/test/pw_hash.vp" $ do
+      let modelState = process foreign_verifpal_test_pw_hash_ast
+      shouldNotFail modelState
+      -- because ENC(pass1,m1) can be bruteforced:
+      modelState `shouldNotHaveConfidentiality` "m1"
+      modelState `shouldHaveConfidentiality` "m2"
+      modelState `shouldHaveConfidentiality` "m3"
+      modelState `shouldHaveConfidentiality` "m4"
+      -- because pass1 was obtain from m1:
+      modelState `shouldNotHaveConfidentiality` "m5"
+      -- because G^pass5 can be bruteforced:
+      modelState `shouldNotHaveConfidentiality` "m6"
+    it "foreign_models/verifpal/test/pw_hash2.vp" $ do
+      let modelState = process foreign_verifpal_test_pw_hash2_ast
+      shouldNotFail modelState
+      modelState `shouldHaveConfidentiality` "a"
 
 genKnowledge :: MonadGen m => m CanonKnowledge
 genKnowledge =
   Hedgehog.Gen.element (enumFrom CPrivate)
 
-genConstantWithKnowledge :: MonadGen m => CanonKnowledge -> m CanonExpr
-genConstantWithKnowledge knowledge = do
-  name' <- Hedgehog.Gen.text (Hedgehog.Range.constant 1 5) Hedgehog.Gen.alphaNum
+genConstantWithKnowledge :: MonadGen m => (Text,CanonKnowledge) -> m CanonExpr
+genConstantWithKnowledge (name',knowledge) = do
+  --name' <- Hedgehog.Gen.text (Hedgehog.Range.constant 1 5) Hedgehog.Gen.alphaNum
   -- we prepend a value to the name depending on the knowledge type;
   -- this ensure we do not generate constants with differing knowledge types
   -- (which is a type error); without having to get into MonadState territory
@@ -518,9 +563,12 @@ genConstantWithKnowledge knowledge = do
   pure (CConstant (Constant {constantName = name}) knowledge)
 
 genConstant :: MonadGen m => m CanonExpr
-genConstant = genKnowledge >>= genConstantWithKnowledge
+genConstant = do
+  genKnowledge >>= \know ->
+    Hedgehog.Gen.text (Hedgehog.Range.constant 1 5) Hedgehog.Gen.alphaNum >>= \name ->
+    genConstantWithKnowledge (name,know)
 
-genEquationLinkWithKnowledge :: MonadGen m => CanonKnowledge -> m CanonExpr -> m CanonExpr
+genEquationLinkWithKnowledge :: MonadGen m => (Text,CanonKnowledge) -> m CanonExpr -> m CanonExpr
 genEquationLinkWithKnowledge knowledge lhs = do
   Hedgehog.Gen.small $ Hedgehog.Gen.recursive Hedgehog.Gen.choice [
     CG <$> (genConstantWithKnowledge knowledge) -- TODO throwing away lhs is a bit sad here, but we need to ensure the knowledge is in there.
@@ -558,7 +606,7 @@ genEquationLink lhs = do
       rhs <- Hedgehog.Gen.small $ genEquationLink (Hedgehog.Gen.small $ genCanonExpr)
       pure ((:^^:) lhs rhs)
     ]
-genEquationWithKnowledge :: MonadGen m => CanonKnowledge -> m CanonExpr
+genEquationWithKnowledge :: MonadGen m => (Text,CanonKnowledge) -> m CanonExpr
 genEquationWithKnowledge knowledge = do
   Hedgehog.Gen.recursive Hedgehog.Gen.choice [
     CG <$> (genConstantWithKnowledge knowledge)
@@ -598,11 +646,11 @@ genPrimitiveCanonExpr = do
     ]
 
 
-genPrimitiveCanonExprWithKnowledge :: MonadGen m => CanonKnowledge -> m (PrimitiveP CanonExpr)
+genPrimitiveCanonExprWithKnowledge :: MonadGen m => (Text,CanonKnowledge) -> m (PrimitiveP CanonExpr)
 genPrimitiveCanonExprWithKnowledge knowledge = do
   let arityN = [CONCAT,HASH,PW_HASH]
   let unary = [SPLIT,SHAMIR_SPLIT]
-  let binary = [ASSERT,MAC,ENC,DEC,PKE_ENC,PKE_DEC,SIGN,BLIND,SHAMIR_JOIN]
+  let binary = [MAC,ENC,DEC,PKE_ENC,PKE_DEC,SIGN,BLIND,SHAMIR_JOIN] -- TODO ASSERT
   let arity3 = [HKDF, AEAD_ENC, AEAD_DEC, SIGNVERIF, UNBLIND]
   let arity4 = [RINGSIGN]
   let arity5 = [RINGSIGNVERIF]
@@ -635,7 +683,7 @@ genPrimitiveCanonExprWithKnowledge knowledge = do
     Hedgehog.Gen.element arity5 <*> genCanonExprWithKnowledge knowledge <*> genCanonExpr <*> genCanonExpr <*> genCanonExpr <*> genCanonExpr
     ]
 
-genCPrimitiveWithKnowledge :: MonadGen m => CanonKnowledge -> m CanonExpr
+genCPrimitiveWithKnowledge :: MonadGen m => (Text, CanonKnowledge) -> m CanonExpr
 genCPrimitiveWithKnowledge knowledge = do
   checked <- Hedgehog.Gen.choice [pure HasQuestionMark, pure HasntQuestionMark]
   prim <- genPrimitiveCanonExprWithKnowledge knowledge
@@ -647,7 +695,7 @@ genCPrimitive = do
   prim <- genPrimitiveCanonExpr
   pure (CPrimitive prim checked)
 
-genCanonExprWithKnowledge :: MonadGen m => CanonKnowledge -> m CanonExpr
+genCanonExprWithKnowledge :: MonadGen m => (Text,CanonKnowledge) -> m CanonExpr
 genCanonExprWithKnowledge knowledge = do
   Hedgehog.Gen.small $ Hedgehog.Gen.recursive Hedgehog.Gen.choice [
     genConstantWithKnowledge knowledge
@@ -666,7 +714,7 @@ hprop_equivalenceExpr =
   -- if they are structurally equivalent then equivalenceExpr should also
   -- be true. the converse is NOT necessarily true.
   -- this test detects when equivalenceExpr is too dismissive.
-  withTests 15000 $
+  withTests 7000 $
   property $ do
   eq1 <- forAll $ genCanonExpr
   Hedgehog.diff eq1 equivalenceExpr eq1
@@ -725,7 +773,7 @@ transformEquivalent exp = do
 
 hprop_encryptEquivalence :: Hedgehog.Property
 hprop_encryptEquivalence =
-  withTests 5000 $
+  withTests 4000 $
   property $ do
     message <- forAll genCanonExpr
     transformed <- forAll $ transformEquivalent message
@@ -756,7 +804,7 @@ hprop_simplifyExprEquivalence =
 
 hprop_equivalenceExprSymmetry :: Hedgehog.Property
 hprop_equivalenceExprSymmetry =
-  withTests 10000 $
+  withTests 5000 $
   property $
   do
     exp1 <- forAll $ genCanonExpr
@@ -765,7 +813,7 @@ hprop_equivalenceExprSymmetry =
 
 hprop_equationsAreEquivalent :: Hedgehog.Property
 hprop_equationsAreEquivalent =
-  withDiscards 50000 $ withTests 10000 $
+  withDiscards 50000 $ withTests 8000 $
   property $
   do
     eq1 <- forAll $ genEquation
@@ -852,12 +900,12 @@ hprop_fuzzFreshness =
   -- the freshness test, we discard the output to check that it is possible
   -- to fail freshness queries (for models that conceivably do not have it).
   withDiscards 10000 $
-  withTests 20000 $ verifiedTermination $ property $ do
+  withTests 15000 $ verifiedTermination $ property $ do
     do_fresh <- forAll $ genKnowledge
     --let do_fresh = CGenerates
     classify "guaranteed fresh" $ do_fresh == CGenerates
     classify "NOT guaranteed fresh" $ do_fresh /= CGenerates
-    with_k <- forAll $ genCanonExprWithKnowledge do_fresh
+    with_k <- forAll $ genCanonExprWithKnowledge ("myfresh",do_fresh)
     let (ms, testResult) = cexprHasFreshness with_k
         testProp = testResult === (CGenerates == do_fresh)
     annotateShow("ms"::Text, ms)
@@ -871,33 +919,137 @@ hprop_fuzzFreshness =
         -- throw away Freshness==True when we did not gen explicit CGenerates:
         discard
 
+confQuery :: Constant -> ModelPart
+confQuery const =
+  ModelQueries [
+  Query {
+      queryKind = ConfidentialityQuery const,
+      queryOptions = Nothing
+      }]
+
+isConfidential :: [(Query, Bool)] -> Bool
+isConfidential  [(Query {queryKind=ConfidentialityQuery {}}, result)] = result
+isConfidential _ = False
+
+mapPW_HASH' :: CanonExpr -> (CanonExpr -> CanonExpr) -> CanonExpr
+mapPW_HASH' old f = do
+  let mapit c exp = c (f exp)
+  case old of
+    CG exp -> mapit CG exp
+    (:^^:) exp1 exp2 ->
+      mapit (\e2 -> (:^^:) (mapit (\e1 -> e1) exp1) e2) exp2
+    CConstant _ _ -> f old
+    CItem n exp -> mapit (CItem n) exp
+    CPrimitive p hasg ->
+      f (CPrimitive (mapPrimitiveP p (\c -> mapPW_HASH c f)) hasg)
+
+mapPW_HASH :: CanonExpr -> (CanonExpr -> CanonExpr) -> CanonExpr
+mapPW_HASH old f = mapPW_HASH' (f old) f
+
+hprop_bruteforcePasswords :: Hedgehog.Property
+hprop_bruteforcePasswords =
+  -- TODO FIXME this test currently finds a lot of problematic values,
+  -- as our method for tracking bruteforcability is kind of broken.
+  -- A better approach would probably be to pull out the CPassword nodes
+  -- in the attacker-reachable graph, then walk backwards and add bruteforce-edges
+  -- until we see a PW_HASH.
+  withTests 100 $ withDiscards 10000 $ withShrinks 30 $ property $ do
+  c_expr <- forAll $ genCanonExprWithKnowledge ("target",CPassword)
+  let pw_const = Constant "ctarget"
+  -- "ctarget" will be a password
+      queryPassword ms' = ms'{modelParts=(modelParts ms') ++ [confQuery pw_const]}
+      first_principal ms' = case (Data.List.head $ modelParts ms') of
+        ModelPrincipal x -> x
+        _ -> Principal "should never happen" []
+      except_target ms' = do
+        let x = first_principal ms'
+        ModelPrincipal (x{
+          principalKnows = (
+             map (\(cc,_) -> (cc,Leaks)) $ (Data.List.filter (\(c,_) -> c /= (NonEmpty.:|) pw_const []) (principalKnows x))
+             )
+         })
+      leakOthers ms' =
+        ms'{
+        modelParts = (modelParts ms') ++ [ except_target ms' ]
+        }
+      (_outer_const, modelA) = buildModelState c_expr
+      modelB = queryPassword $ leakOthers modelA
+      ms = process modelB
+      wasConf = isConfidential (msQueryResults ms)
+  if (msErrors ms /= []) then discard
+    else do
+    classify "was confidential" wasConf
+    if wasConf
+      then do
+      -- it was confidential, so it should have a PW_HASH somewhere in there.
+      -- now we change those to HASH and see if that leaks it:
+      -- ( note that if it was accidentally confidential
+      --   and something *else* has PW_HASH, we will still pick up those
+      --   problems too; see data/confidentiality21.vp for an example found by
+      --   this branch/test).
+      --
+      map_public <- forAll $ Hedgehog.Gen.element [False,False,False,False,False,True]
+      let (_const2,modelC) = buildModelState no_more_pw_hash
+          modelD = queryPassword $ leakOthers modelC
+          no_more_pw_hash =  mapPW_HASH c_expr $
+            \me -> do
+              case me of
+                CPrimitive (PW_HASH []) _ -> me
+                CPrimitive (PW_HASH x) hasg -> CPrimitive (HASH x) hasg
+                CConstant c CPassword | map_public && c == pw_const -> CConstant c CPublic
+                _ -> me
+          ms2 = process modelD
+          wasConfB = isConfidential (msQueryResults ms2)
+      classify "PW_HASH -> HASH" (not wasConfB)
+      if ms /= ms2
+        then do
+        annotateShow (ms)
+        annotateShow (ms2)
+        wasConfB === False -- we replaced the pw hashes, so it should not be bruteforceable now, at least if pw was at a leaf
+        else discard -- our map didn't change anything
+      else do
+      -- was not confidential in the first place, so we should map HASH -> PW_HASH
+      -- and see if that makes it confidential
+      map_hash <- forAll $ Hedgehog.Gen.element [True,True,True,True,False]
+      map_concat <- forAll $ Hedgehog.Gen.element [True,True,True,True,False]
+      let (_const3,modelE') = buildModelState way_more_pw_hash
+          modelE = queryPassword $ leakOthers modelE'
+          way_more_pw_hash =  mapPW_HASH c_expr $
+            \me -> do
+              case me of
+                CPrimitive (HASH []) _ -> me
+                CPrimitive (HASH x) hasg | map_hash -> CPrimitive (PW_HASH x) hasg
+                CPrimitive (CONCAT x) hasg | map_concat -> CPrimitive (PW_HASH x) hasg
+                CConstant c CPassword | c == pw_const && not (map_hash || map_concat) -> CConstant pw_const CPrivate
+                _ -> me
+          ms3 = process modelE
+          wasConfC = isConfidential (msQueryResults ms3)
+      classify "HASH -> PW_HASH" (map_hash && wasConfC)
+      classify "CONCAT -> PW_HASH" (map_concat && wasConfC)
+      if (ms /= ms3)
+        then do
+        annotateShow (ms3)
+        if not (map_hash || map_concat)
+          then wasConfC === True -- we replaced the hashes, so it should not be bruteforceable now. (if the password as at a leaf after the HASH/CONCAT at least)
+          else discard -- might have been at different leaf.
+        else discard -- our map didn't change anything
+
 hprop_fuzzConfidentiality :: Hedgehog.Property
 hprop_fuzzConfidentiality =
-  withTests 1000 $ withShrinks 1000 $ verifiedTermination $ property $ do
+  withTests 5000 $ withShrinks 1000 $ verifiedTermination $ property $ do
   c_expr <- forAll genCanonExpr
   --Debug.Trace.traceShow c_expr $ annotateShow("expr"::Text, c_expr)
   -- TODO it would be great to partition msConstants / msPrincipalConstants
   -- into sets where equivalenceExpr holds, and add ConfidentialityQuery entries
   -- for those constants to test that
   --   equivalence? a,b --> confidentiality? a === confidentiality? b
-  -- TODO another nice test would be to leak/send(in a message) all the other constants;
-  --      any Assignment draws its confidentiality from a 'knows' or 'generates' stanza
-  --      so it should be possible to break confidentiality by leaking those.
   let (const, modelA) = buildModelState c_expr
-      confQuery = ModelQueries [
-        Query {
-            queryKind = ConfidentialityQuery const,
-            queryOptions = Nothing
-            }
-        ]
       model = modelA{
-        modelParts=(modelParts modelA) ++ [ confQuery ]
+        modelParts=(modelParts modelA) ++ [confQuery const]
         }
   annotateShow("model"::Text, model)
   let ms = process model
-      isConf [(Query {queryKind=ConfidentialityQuery {}}, result)] = result
-      isConf _ = False
-      testResult = isConf (msQueryResults ms)
+      testResult = isConfidential (msQueryResults ms)
       hasErrors = (msErrors ms /= [])
   classify "errors" hasErrors
   annotateShow("ms"::Text, ms)
@@ -907,17 +1059,60 @@ hprop_fuzzConfidentiality =
     classify "confidentiality?" (testResult)
     if testResult
       then do
-      let except = filter ((/=) const) (Map.keys (msConstants ms))
-          leakyPrincipal = ModelPrincipal(
-            Principal {
-                principalName="A",
-                principalKnows=[(NonEmpty.fromList except, Leaks)]
-                })
-          leakyModel = modelA{
-            modelParts=(modelParts modelA) ++ [leakyPrincipal] ++ [ confQuery ]}
+      -- if it was confidential?:
+      -- We pick from one of these tests:
+      -- a) leak all the constants except the target (which is always an Assignment);
+      --    Assignments cannot be confidential if they rest on purely leaked values.
+      -- b) send them to a principal "B" and have "B" process the Assignment instead.
+      --    if B can construct something only using values that were sent over
+      --    the wire, it can't be confidential.
+      -- Another variants on this technique might be to mark them Public in the original definition instead of Leaks.
+      let except_target = filter ((/=) const) (Map.keys (msConstants ms))
+      (leaked_gen,genParts) <- forAll $ Hedgehog.Gen.choice [
+        do let leakyPrincipalA = ModelPrincipal(
+                 Principal {
+                     principalName="A",
+                     principalKnows=[(NonEmpty.fromList except_target, Leaks)]
+                     })
+             in pure $ (,) True ((modelParts modelA) ++ [leakyPrincipalA])
+        , do
+            pure $ (,) False [
+              ModelPrincipal (Principal {
+                                 principalName="A",
+                                 principalKnows=
+                                   case (Data.List.head (modelParts modelA)) of
+                                     ModelPrincipal (Principal {principalKnows=x}) ->
+                                       Data.List.filter (\(c,_) -> c /= (NonEmpty.:|) const []) x
+                                     _ -> [] -- can never happen
+                                 })
+              , ModelPrincipal( Principal { principalName="B", principalKnows=[] })
+              , ModelMessage(
+                  Message {
+                      messageSender="A",
+                      messageReceiver="B",
+                      -- let's say they're guarded:
+                      messageConstants=map (\c -> (c,True)) except_target
+                      })
+              , ModelPrincipal( Principal { principalName="B", principalKnows=[
+                                              ((NonEmpty.fromList [const]),
+                                                case Map.lookup const (msConstants ms) of
+                                                  Just assign -> assign
+                                                  Nothing -> Private -- can never happen
+                                               )
+                                              ] })
+              ]
+        ]
+      classify "leaked from A" (leaked_gen)
+      classify "messaged to B" (not leaked_gen)
+      let leakyModel = modelA{
+            modelParts=genParts ++ [ confQuery const ]}
           leaky_ms = process leakyModel
-          still_secret = isConf (msQueryResults leaky_ms)
+          still_secret = isConfidential (msQueryResults leaky_ms)
       annotateShow("leakyModel"::Text, leakyModel)
       annotateShow("leaky_ms"::Text, leaky_ms)
       still_secret === False
-      else pure () -- had no confidentiality in the first place
+      else
+      -- had no confidentiality in the first place.
+      -- TODO would be great to mark things Private and check that that makes it
+      -- confidential!
+      pure ()

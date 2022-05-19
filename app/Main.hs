@@ -152,7 +152,7 @@ mytoDot g =
                          , globalAttributes = [
                              EdgeAttrs [
                                  FontName "Mono"
-                                 , color Red --(RGB 0xfe 0x4a 0x49)
+                                 , color Firebrick1 --(RGB 0xfe 0x4a 0x49) -- ofc this is broken in haskell, but https://graphviz.org/doc/info/colors.html#brewer lists a bunch of the colors that actually work in this library
                                  --, Constraint False
                                  -- TODO if we use records we can have "ports" so
                                  -- we can draw lines accurately from each argument

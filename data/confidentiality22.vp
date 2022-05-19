@@ -1,0 +1,11 @@
+attacker [passive]
+principal A [
+  knows password ctarget22
+  knows private sa
+  outer = HKDF(sa, HASH(ctarget22)?, sa)?
+  leaks sa, outer
+]
+queries [
+  // G^target can be bruteforced, and we leaked sa, so that can be reconstructed.
+  confidentiality? ctarget22
+]

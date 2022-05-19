@@ -211,6 +211,31 @@ confidentiality18 = $(embedStringFile "data/confidentiality18.vp")
 confidentiality18_ast :: Model
 confidentiality18_ast = assertParseModel confidentiality18
 
+confidentiality19 :: Text
+confidentiality19 = $(embedStringFile "data/confidentiality19.vp")
+confidentiality19_ast :: Model
+confidentiality19_ast = assertParseModel confidentiality19
+
+confidentiality20 :: Text
+confidentiality20 = $(embedStringFile "data/confidentiality20.vp")
+confidentiality20_ast :: Model
+confidentiality20_ast = assertParseModel confidentiality20
+
+confidentiality21 :: Text
+confidentiality21 = $(embedStringFile "data/confidentiality21.vp")
+confidentiality21_ast :: Model
+confidentiality21_ast = assertParseModel confidentiality21
+
+confidentiality22 :: Text
+confidentiality22 = $(embedStringFile "data/confidentiality22.vp")
+confidentiality22_ast :: Model
+confidentiality22_ast = assertParseModel confidentiality22
+
+confidentiality23 :: Text
+confidentiality23 = $(embedStringFile "data/confidentiality23.vp")
+confidentiality23_ast :: Model
+confidentiality23_ast = assertParseModel confidentiality23
+
 simple1_complete_passive :: Text
 simple1_complete_passive = $(embedStringFile "data/simple1_complete_passive.vp")
 
@@ -401,6 +426,21 @@ foreignRingSign = $(embedStringFile "foreign_models/verifpal/test/ringsign.vp")
 
 foreignRingSignModel :: Model
 foreignRingSignModel = assertParseModel foreignRingSign
+
+foreign_verifpal_test_ql :: Text
+foreign_verifpal_test_ql = $(embedStringFile "foreign_models/verifpal/test/ql.vp")
+foreign_verifpal_test_ql_ast :: Model
+foreign_verifpal_test_ql_ast = assertParseModel foreign_verifpal_test_ql
+
+foreign_verifpal_test_pw_hash :: Text
+foreign_verifpal_test_pw_hash = $(embedStringFile "foreign_models/verifpal/test/pw_hash.vp")
+foreign_verifpal_test_pw_hash_ast :: Model
+foreign_verifpal_test_pw_hash_ast = assertParseModel foreign_verifpal_test_pw_hash
+
+foreign_verifpal_test_pw_hash2 :: Text
+foreign_verifpal_test_pw_hash2 = $(embedStringFile "foreign_models/verifpal/test/pw_hash2.vp")
+foreign_verifpal_test_pw_hash2_ast :: Model
+foreign_verifpal_test_pw_hash2_ast = assertParseModel foreign_verifpal_test_pw_hash2
 
 -- principal A[generates a; c = b ]
 -- this should give an error that "b" is unbound

@@ -1,0 +1,14 @@
+attacker [passive]
+principal A [
+  knows password ctarget23
+  knows private sa
+  outer = MAC(
+      PW_HASH(sa),
+      G^ctarget23
+  )
+  leaks sa, outer
+]
+queries [
+  // G^target can be bruteforced, and we leaked sa, so that can be reconstructed.
+  confidentiality? ctarget23
+]
