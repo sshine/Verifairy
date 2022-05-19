@@ -520,6 +520,24 @@ spec_confidentiality = do
       let modelState = process confidentiality23_ast
       shouldNotFail modelState
       modelState `shouldNotHaveConfidentiality` "ctarget23"
+    it "confidentiality24" $ do
+      let modelState = process confidentiality24_ast
+      shouldNotFail modelState
+      modelState `shouldHaveConfidentiality` "c_hash"
+      modelState `shouldHaveConfidentiality` "secret_salt"
+      modelState `shouldHaveConfidentiality` "c_pk"
+      modelState `shouldHaveConfidentiality` "inner_c"
+      modelState `shouldNotHaveConfidentiality` "outer_c"
+      modelState `shouldHaveConfidentiality` "ctarget24_c"
+    it "confidentiality25" $ do
+      let modelState = process confidentiality25_ast
+      shouldNotFail modelState
+      modelState `shouldHaveConfidentiality` "ctarget25_a"
+      modelState `shouldHaveConfidentiality` "a_hash"
+      modelState `shouldHaveConfidentiality` "ctarget25_b"
+      modelState `shouldHaveConfidentiality` "b_hash"
+      modelState `shouldNotHaveConfidentiality` "outer_a"
+      modelState `shouldNotHaveConfidentiality` "outer_b"
     it "foreign_models/verifpal/test/ql.vp" $ do
       let modelState = process foreign_verifpal_test_ql_ast
       shouldNotFail modelState
@@ -1030,7 +1048,10 @@ hprop_bruteforcePasswords =
         then do
         annotateShow (ms3)
         if not (map_hash || map_concat)
-          then wasConfC === True -- we replaced the hashes, so it should not be bruteforceable now. (if the password as at a leaf after the HASH/CONCAT at least)
+          then do
+          if wasConfC /= True
+            then Hedgehog.diff ms (==) ms3
+            else wasConfC === True -- we replaced the hashes, so it should not be bruteforceable now. (if the password as at a leaf after the HASH/CONCAT at least)
           else discard -- might have been at different leaf.
         else discard -- our map didn't change anything
 

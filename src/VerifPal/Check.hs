@@ -169,11 +169,19 @@ buildKnowledgeGraph ms = do
   --gtrc = Data.Graph.Inductive.Query.TransClos.trc g
   -- shortest path: Data.Graph.Inductive.Query.SP
   let nil = CConstant (Constant "nil") CPublic
+      leaks = CConstant (Constant "leaks") CPrivate
+      public = CConstant (Constant "public") CPrivate
+      sent = CConstant (Constant "sent") CPrivate
       attacker = CConstant (Constant "attacker") CPrivate
       edge_always = Set.singleton $ Set.empty -- 'OR(AND())' always matches
   upsertMapNodeM nil
+  upsertMapNodeM leaks
+  upsertMapNodeM public
+  upsertMapNodeM sent
   upsertMapNodeM attacker
-  --upsertEdgeM (attacker,attacker,edge_always)
+  upsertEdgeM (attacker,leaks,edge_always)
+  upsertEdgeM (attacker,public,edge_always)
+  upsertEdgeM (attacker,sent,edge_always)
   --upsertEdgeM (attacker,nil,edge_always)
   let constmap = msConstants ms
       foldCanonExpr :: CanonExpr -> NodeMapM CanonExpr (Set (Set CanonExpr)) Gr CanonExpr
@@ -279,7 +287,7 @@ buildKnowledgeGraph ms = do
             pure simpl -- TODO
           CConstant _ CPublic -> do
             -- attacker knows this because it's public
-            upsertEdgeM (attacker, simpl, edge_always)
+            upsertEdgeM (public, simpl, edge_always)
             pure simpl
           CConstant _ _ -> do
             pure simpl -- the attacker knows nothing, john snow
@@ -484,16 +492,16 @@ buildKnowledgeGraph ms = do
             upsertMapNodeM cprName
             foldM (\() (c,(knowledge,_counter)) -> do
                       let c_expr = canonicalizeExpr constmap (EConstant c)
-                      _ <- foldCanonExpr c_expr
+                      simpl <- foldCanonExpr c_expr
                       upsertEdgeM (cprName,c_expr,edge_always)
                       case knowledge of
                         Leaks -> do
                           -- attacker learns it because it's leaked:
-                          upsertEdgeM (nil, c_expr, Set.singleton $ Set.singleton attacker)
+                          upsertEdgeM (leaks, simpl, Set.singleton $ Set.singleton attacker)
                           pure ()
                         Received _ -> do
                           -- attacker learns it from the wire:
-                          upsertEdgeM (nil, c_expr, Set.singleton $ Set.singleton attacker)
+                          upsertEdgeM (sent, simpl, Set.singleton $ Set.singleton attacker)
                           pure ()
                         _ -> pure ()
                   ) () $ Map.assocs principalMap

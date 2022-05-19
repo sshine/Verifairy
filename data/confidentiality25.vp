@@ -1,0 +1,38 @@
+attacker [passive]
+principal A [
+  knows password ctarget25_a
+  a_hash = PW_HASH(ctarget25_a)
+  outer_a = PW_HASH(a_hash, G^a_hash)
+  leaks outer_a
+]
+principal B [
+  knows password ctarget25_b
+  knows private y
+  b_hash = PW_HASH(ctarget25_b)
+  outer_b = PW_HASH(b_hash)
+  leaks outer_b
+]
+queries [
+  // Verifpal 0.26.1 - https://verifpal.com
+  //   Info • Attacker is configured as passive. 
+ 
+  //////////////// principal A
+  // Deduction • ctarget25_a obtained as a password unsafely used within PW_HASH(PW_HASH(ctarget25_a), G^PW_HASH(ctarget25_a)). 
+  // Result • confidentiality? ctarget25_a —
+  //          ctarget25_a (ctarget25_a) is obtained by Attacker.
+  confidentiality? ctarget25_a
+
+  // Deduction • Output of PW_HASH(ctarget25_a) obtained by reconstructing with ctarget25_a.
+  // Deduction • G^PW_HASH(ctarget25_a) obtained by reconstructing with PW_HASH(ctarget25_a).
+  // Result • confidentiality? a_hash —
+  //          a_hash (PW_HASH(ctarget25_a)) is obtained by Attacker.
+  confidentiality? a_hash
+
+  //////////////// principal B
+  // this one is fine:
+  confidentiality? ctarget25_b
+  confidentiality? b_hash
+
+  confidentiality? outer_a
+  confidentiality? outer_b
+]

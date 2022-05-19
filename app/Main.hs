@@ -3,7 +3,8 @@ module Main where
 import Control.Monad (unless)
 import Data.Foldable (for_, traverse_)
 import Data.Function ((&))
-import Data.Set (Set)
+import qualified Data.Set as Set
+import Data.Set(Set)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
@@ -109,7 +110,8 @@ mytoDot g =
   let fixAlign :: Text -> Text
       fixAlign text =
         -- \l left-justifies the current line (as opposed to \n which centers)
-        Text.replace "\n" "\\l" . flip Text.append "\\l" $ text
+        let a = Text.replace "\n" "\\l" text in
+          if a == "" then a else Text.append a "\\l"
       ppEdge (_from,_to,s) =
         let treated = if all null s then "" else show $ ppDoc s
         in fixAlign $ Text.pack treated
@@ -117,7 +119,7 @@ mytoDot g =
         [
           toLabel $ ppEdge x
         , colors !! (from+to)
-        , Decorate True
+        --, Decorate True
         ]
       nodeAttrs (a,label) = -- fmtNode= \(_,label)-> [Label (StrLabel (L.pack label))]
         [ toLabel . fixAlign . Text.pack . show $ ppDoc $ label

@@ -236,6 +236,16 @@ confidentiality23 = $(embedStringFile "data/confidentiality23.vp")
 confidentiality23_ast :: Model
 confidentiality23_ast = assertParseModel confidentiality23
 
+confidentiality24 :: Text
+confidentiality24 = $(embedStringFile "data/confidentiality24.vp")
+confidentiality24_ast :: Model
+confidentiality24_ast = assertParseModel confidentiality24
+
+confidentiality25 :: Text
+confidentiality25 = $(embedStringFile "data/confidentiality25.vp")
+confidentiality25_ast :: Model
+confidentiality25_ast = assertParseModel confidentiality25
+
 simple1_complete_passive :: Text
 simple1_complete_passive = $(embedStringFile "data/simple1_complete_passive.vp")
 

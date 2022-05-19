@@ -1,0 +1,32 @@
+attacker [passive]
+principal C [
+  knows password ctarget24_c
+  knows private secret_salt
+  c_hash = PW_HASH(secret_salt, ctarget24_c, secret_salt)
+  c_pk = G^c_hash
+  inner_c = HASH(c_pk)
+  outer_c = HASH(inner_c)
+  leaks outer_c
+]
+queries [
+  // Verifpal 0.26.1 - https://verifpal.com
+  //   Info • Attacker is configured as passive. 
+ 
+  //////////////// principal C
+  // it doesn't learn the hash, good thing we salted it:
+  confidentiality? c_hash
+  // and the salt stays secret:
+  confidentiality? secret_salt
+  // it doesn't learn c_pk, which makes sense because it's G^c_hash
+  confidentiality? c_pk
+  // ok so: it doesn't learn inner_c either: HASH(c_pk)
+  confidentiality? inner_c
+
+  // then we leak outer_c
+  confidentiality? outer_c
+
+  // and now verifpal magically learns:
+  //   Deduction • ctarget24_c obtained as a password unsafely used within HASH(HASH(G^PW_HASH(secret_salt, ctarget24_c, secret_salt))). 
+
+  confidentiality? ctarget24_c // ????????
+]
