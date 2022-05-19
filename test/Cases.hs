@@ -3,15 +3,15 @@
 module Cases where
 
 import Control.Monad()
-import Data.Char (chr, isHexDigit)
+--import Data.Char (chr, isHexDigit)
 import Data.FileEmbed
-import Data.Foldable (for_)
-import Data.Map (Map)
-import qualified Data.Map as Map
+--import Data.Foldable (for_)
+import Data.Map ()
+--import qualified Data.Map as Map
 import Data.Text (Text)
-import qualified Data.Text as Text
-import Data.Text.Read (hexadecimal)
-import Data.Void
+--import qualified Data.Text as Text
+--import Data.Text.Read (hexadecimal)
+import Data.Void()
 import Data.List.NonEmpty
 
 import VerifPal.Types

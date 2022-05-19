@@ -12,7 +12,7 @@ import Data.Text (Text,pack,unpack,toLower)
 --import qualified Data.Text as Text
 --import Data.Text.Read (hexadecimal)
 --import Data.Void
-
+import qualified Data.List
 import Hedgehog
 import qualified Hedgehog.Gen
 import qualified Hedgehog.Range
@@ -21,7 +21,7 @@ import qualified Hedgehog.Range
 import Test.Tasty.Hspec
 
 import VerifPal.Types
-import VerifPal.Check (process, ModelState(..), ModelError(..), ProcessingCounter, CanonExpr(..),CanonKnowledge(..), equationToList, equivalenceExpr, simplifyExpr, decanonicalizeExpr)
+import VerifPal.Check (process, ModelState(..), ModelError(..), ProcessingCounter, CanonExpr(..),CanonKnowledge(..), equationToList, equivalenceExpr, simplifyExpr, decanonicalizeExpr, mapPrimitiveP)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Graph.Inductive (mkGraph, OrdGr(..))

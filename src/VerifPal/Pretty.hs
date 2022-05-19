@@ -6,7 +6,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Void
 import Error.Diagnose.Compat.Megaparsec (HasHints (hints))
-import Prettyprinter (Doc (..), Pretty (..), align, annotate, colon, hardline, lbracket, rbracket, space, width, (<+>))
+import Prettyprinter (Doc, Pretty (..), align, annotate, colon, hardline, lbracket, rbracket, space, width, (<+>))
 import Prettyprinter.Render.Terminal (AnsiStyle, Color (..), bold, color, colorDull, putDoc)
 import Text.Show.Pretty (ppDoc)
 import VerifPal.Types (Constant (..), Query (..), QueryKind (..))
