@@ -1,0 +1,44 @@
+attacker [passive]
+principal A [] principal B [] principal C []
+//
+principal A [
+  generates asecret
+  knows private b_key, c_key
+// TODO verifpal doesn't like this with the // at the end:
+//  s1, s2, s3 = SHAMIR_SPLIT(asecret//
+  s1, s2, s3 = SHAMIR_SPLIT(asecret
+  )
+  p1 = ENC(b_key, s1)
+  p2 = ENC(b_key, s2)
+  p3 = ENC(c_key, s3)
+]
+A -> B: p1, p2
+A -> C: p3
+principal B [
+  knows private b_key, c_key
+  b1 = DEC(b_key, p1)
+  b2 = DEC(b_key, p2)
+  b_to_c = ENC(c_key, b2)
+  restored_b = SHAMIR_JOIN(b2,b1)
+]
+B -> C: b_to_c
+principal C [
+  knows private c_key
+  c2 = DEC(c_key, b_to_c)
+  c3 = DEC(c_key, p3)
+  restored_c = SHAMIR_JOIN(c2,c3)
+  not_restored_c = SHAMIR_JOIN(c3,c3) // that's cheating!
+]
+queries [
+  equivalence? asecret, restored_b, restored_c
+  equivalence? asecret, not_restored_c
+  equivalence? b1, s1
+  equivalence? c2, s2
+  equivalence? s3, c3
+  confidentiality? s2
+  confidentiality? s3
+  confidentiality? asecret
+  confidentiality? restored_b
+  confidentiality? restored_c
+]
+//

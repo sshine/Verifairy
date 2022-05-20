@@ -26,9 +26,9 @@ import Cases
 
 hprop_doesntCrash :: Hedgehog.Property
 hprop_doesntCrash =
-  withTests 1000 $
+  withTests 500 $
   verifiedTermination $ property $ do
-    random <- forAll $ Hedgehog.Gen.text (Hedgehog.Range.constant 0 300) Hedgehog.Gen.unicode
+    random <- forAll $ Hedgehog.Gen.text (Hedgehog.Range.constant 0 1000) Hedgehog.Gen.unicode
     let parsed = parseModel random
     parsed === parsed
 

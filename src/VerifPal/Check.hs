@@ -17,7 +17,9 @@ import Data.List
 import Data.List.NonEmpty
 import Data.Set (Set)
 import qualified Data.Set as Set
---import Debug.Trace(traceShow)
+import Debug.Trace(traceShow)
+import Data.Tree
+import Text.Show.Pretty (ppDoc)
 
 import Data.Graph.Inductive.Graph() -- (mkGraph, LNode, LEdge, OrdGr, DynGraph(..), empty, Graph, gfiltermap)
 import Data.Graph.Inductive.Basic() -- (elfilter)
@@ -52,7 +54,8 @@ data ModelState = ModelState
   , msQueryResults       :: [(Query, Bool)]
   -- need OrdGr in order to derive Ord for ModelState:
   , msConfidentialityGraph :: OrdGr Gr CanonExpr (Set (Set CanonExpr))
-  , msPrincipalConfidentialityGraph :: Map PrincipalName (OrdGr Gr CanonExpr (Set (Set CanonExpr)))
+  , msPrincipalConfidentialityGraph :: Map PrincipalName (OrdGr Gr CanonExpr (Set (Set CanonExpr))) -- ^-- all the values each principal can reach
+  , msPrincipalConfidentialitySet :: Map PrincipalName (Set CanonExpr) -- ^-- a set of the nodes in principal's msPrincipalConfidentialityGraph
   } deriving (Eq, Ord, Show)
 
 type ProcessingCounter = Int
@@ -88,6 +91,7 @@ emptyModelState = ModelState
   , msQueryResults = []
   , msConfidentialityGraph = OrdGr (mkGraph [] [])
   , msPrincipalConfidentialityGraph = Map.empty
+  , msPrincipalConfidentialitySet = Map.empty
   }
 
 type EvalM a = State ModelState a
@@ -123,6 +127,64 @@ upsertEdgeM edge@(a,b,ssc) = do
   if updated then pure () else do
     insMapEdgeM edge
     pure ()
+
+addPasswordBruteforceEdges :: NodeMapM CanonExpr (Set (Set CanonExpr)) Gr ()
+addPasswordBruteforceEdges = do
+  (_nm, g) <- get
+  let pw_g = labfilter (
+        \n -> case n of
+          CConstant _ CPassword -> True
+          _ -> False
+        ) g
+      pw_nodes = nodes pw_g
+      f :: Context CanonExpr (Set (Set CanonExpr)) -> (CanonExpr,Node,Adj (Set (Set CanonExpr)),Bool)
+      f (adj_in, node, label, adj_out) =
+        case label of
+          CPrimitive (PW_HASH _) _ -> (label,node,[], True)
+          _ -> (label, node,adj_in, False)
+      forest :: Data.Tree.Forest (CanonExpr,Node,Adj (Set (Set CanonExpr)),Bool)
+      forest = dffWith f pw_nodes g
+      --foldTree :: (a -> [b] -> b) -> Tree a -> b
+      asd :: Tree (CanonExpr,Node,Adj (Set (Set CanonExpr)),Bool) -> NodeMapM CanonExpr (Set (Set CanonExpr)) Gr ()
+      asd tree = do
+        let (pw, pw_node, pw_edges_in, doesleak) = rootLabel tree
+            containers = subForest tree
+        case doesleak of
+          True -> pure () -- stopped by a PW_HASH()
+          False -> do
+            mapM_ (\cont -> do
+                      -- TODO what we actually need to do is remove ourselves from this edge:
+                      let o = find (\(_,edge_node) -> edge_node == cont_node
+                                   ) pw_edges_in
+                          (label, cont_node, edg, ispwh) = rootLabel cont
+                          preconditions = case o of
+                            -- remove the password from the equation, so to speak:
+                            --       label == HASH(pw,x,y) -> {{x,y}}
+                            --       label == ENC(pw, msg) -> {{msg}}
+                            Just (old_preconds,_) -> Set.map (Set.filter ((/=) pw)) old_preconds
+                            -- under normal circumstances there would be no edge;
+                            -- like: label == CG pw
+                            --       lable == HASH(pw)
+                            -- so here we allow them to bruteforce:
+                            Nothing -> Set.singleton $ Set.empty
+                      if ispwh
+                        then pure () -- PW_HASH(pw) does not lead to pw
+                        else upsertEdgeM (label, pw, preconditions)
+                      asd cont
+                  ) containers
+      fuck = foldM (\() x -> asd x) () forest
+      -- Data.Tree.drawForest
+  --() <- Debug.Trace.traceShow ("dff"::Text, ppDoc forest) $ pure ()
+  fuck
+  -- dffWith :: Graph gr => CFun a b c -> [Node] -> gr a b -> [Tree c]
+  -- dffWith f pw_nodes g
+  -- xdfWith :: Graph gr => CFun a b [Node] -> CFun a b c -> [Node] -> gr a b -> ([Tree c], gr a b)
+  -- (tree, newg) = xdfWith suc' f pw_nodes g
+  -- forall CPassword
+  --   do BFS
+  --     if node is PW_HASH:
+  --       stop
+  --     upsertEdgeM (node, parent, Set.singleton $ Set.singleton bruteforce)
 
 exprALeadsToPasswordB_ifC_M :: CanonExpr -> CanonExpr -> Set CanonExpr -> NodeMapM CanonExpr (Set (Set CanonExpr)) Gr ()
 exprALeadsToPasswordB_ifC_M (CPrimitive (PW_HASH _) _) _ _ = pure ()
@@ -268,6 +330,7 @@ buildKnowledgeGraph ms = do
           CItem n wever -> do
             s_wever <- foldCanonExpr wever
             () <- case s_wever of
+                    -- TODO FIXME do we need this?:
                     (CPrimitive (SPLIT (CPrimitive (CONCAT lst) _)) _) -> do
                       simple_lst <- foldM (\acc exp -> do
                                               x <- foldCanonExpr exp
@@ -453,7 +516,7 @@ buildKnowledgeGraph ms = do
             s_a <- foldCanonExpr a
             s_b <- foldCanonExpr b
             upsertEdgePermutationsM [s_a,s_b] simpl
-            case (a,b) of
+            case (s_a,s_b) of
               (CItem na (CPrimitive (SHAMIR_SPLIT exp1) _),
                CItem nb (CPrimitive (SHAMIR_SPLIT exp2) _))
                 | na /= nb && equivalenceExpr exp1 exp2 -> do
@@ -506,6 +569,11 @@ buildKnowledgeGraph ms = do
                         _ -> pure ()
                   ) () $ Map.assocs principalMap
             pure () ) () $ Map.assocs $ msPrincipalConstants ms
+  addPasswordBruteforceEdges
+  (_nm, g) <- get
+  case Data.Graph.Inductive.Query.DFS.isConnected g of
+    True -> pure ()
+  pure ()
   -- TODO FIXME assert that Data.Graph.Inductive.Query.DFS.isConnected g holds
   -- for the monad result (_, g) <- get  ; ie that we didn't add nodes that can't
   -- be reached from any of the other nodes.
@@ -552,7 +620,7 @@ restoreEdges g (b_in,v_node,v_label,b_out) =
 
 -- computes the set of all expr reachable by the given principal.
 -- the attacker is called "attacker" TODO
-computePrincipalKnowledge :: Text -> State ModelState (Set CanonExpr)
+computePrincipalKnowledge :: Text -> State ModelState ()
 computePrincipalKnowledge principalName = do
   g <- gets msConfidentialityGraph
   let ug = unOrdGr g
@@ -605,10 +673,11 @@ computePrincipalKnowledge principalName = do
           else while_new newer -- we learned something new, try again
       (latest_attacker_knowl, filteredGraph) = while_new attackerSetOrigin
   mpcgm <- gets msPrincipalConfidentialityGraph
-  let new_g = Map.insert principalName (OrdGr filteredGraph) mpcgm
+  mpcs <- gets msPrincipalConfidentialitySet
   modify $ \st -> do
-    st{msPrincipalConfidentialityGraph = new_g}
-  pure latest_attacker_knowl
+    st{ msPrincipalConfidentialityGraph = Map.insert principalName (OrdGr filteredGraph) mpcgm
+      , msPrincipalConfidentialitySet = Map.insert principalName latest_attacker_knowl mpcs
+      }
 
 processModelPart :: ModelPart -> State ModelState ()
 processModelPart (ModelPrincipal (Principal name knows)) = do
@@ -621,6 +690,8 @@ processModelPart (ModelQueries qs) = do
     modify $ \state -> do
       let (_nodemap,gr) = execState (buildKnowledgeGraph state) (new,mkGraph [] [])
       state { msConfidentialityGraph = OrdGr gr }
+    () <- computePrincipalKnowledge "attacker" -- TODO currently this is hardcoded so we don't do it for the other principals
+
     mapM_ processQuery qs
   -- TODO if the user wrote the same query twice
   -- we should collapse them to a single query
@@ -712,7 +783,7 @@ processKnowledge principalName (constants, knowledge) = do
             (Nothing, _, _) | knowledge /= Leaks -> addConstant principalName constant knowledge
             -- principal A [ knows public x ] principal B [ knows public X ]
             (Just existing, Leaks, _) ->
-              upsertPrincipalConstant "attacker" constant existing
+              upsertPrincipalConstant "attacker" constant Leaks
             (Just oldknowledge, _, True)
               | oldknowledge == knowledge ->
                 upsertPrincipalConstant principalName constant knowledge
@@ -740,11 +811,13 @@ processQuery query@(Query (FreshnessQuery constant) _TODO_queryOptions) = do
 processQuery query@(Query (ConfidentialityQuery constant) _TODO_queryOptions) = do
   constantExistsOrError constant
   constmap <- gets msConstants
-  attackerSet <- computePrincipalKnowledge "attacker" -- TODO computing this for each query is stupid, we should cache it
+  knowl_sets <- gets msPrincipalConfidentialitySet
   let canon_constant :: CanonExpr
       canon_constant = simplifyExpr $ canonicalizeExpr constmap (EConstant (constant))
-      attacker_knows = foldl' (\knows cexpr -> knows || equivalenceExpr cexpr canon_constant) False attackerSet
-  addQueryResult query (not attacker_knows)
+      result = case Map.lookup "attacker" knowl_sets of
+        Just attackerSet -> Set.notMember canon_constant attackerSet
+        Nothing -> False
+  addQueryResult query result
   pure ()
 
 processQuery (Query (UnlinkabilityQuery consts) _TODO_queryOptions) = do
@@ -873,6 +946,15 @@ equationToList acc c =
 simplifyExpr' :: Bool -> CanonExpr -> CanonExpr
 simplifyExpr' skipPrimitive e = do
   case e of
+    CPrimitive (SHAMIR_JOIN
+                ( CItem idxa (CPrimitive (SHAMIR_SPLIT e_a) _))
+                ( CItem idxb (CPrimitive (SHAMIR_SPLIT e_b)_))
+               ) hasq
+      | not skipPrimitive && idxa /= idxb && equivalenceExpr e_a e_b ->
+        -- TODO may need simplifyExpr e_a
+        -- TODO may need to sort e_a,e_b and return a deterministic element
+        e_a
+    --
     CPrimitive (SPLIT (CPrimitive (CONCAT (hd:_)) _)) _
       | not skipPrimitive -> simplifyExpr hd -- TODO is it correct to throw away the rest?
     --CPrimitive (CONCAT [
@@ -880,7 +962,6 @@ simplifyExpr' skipPrimitive e = do
     --                           (CPrimitive (CONCAT lst) _TODOhasq)
     --                          ) _
     --                   ]) hasq -> CPrimitive (CONCAT lst) hasq
-    -- TODO SHAMIR_JOIN(SHAMIR_SPLIT)
     -- UNBLIND(k, m, SIGN(a, BLIND(k, m))): SIGN(a, m)
     CPrimitive (UNBLIND k m (CPrimitive (SIGN a (CPrimitive (BLIND k2 m2) hasq'')) hasq')) hasq
       | not skipPrimitive -> do
@@ -990,6 +1071,8 @@ equivalenceExprs [] [] = True
 equivalenceExprs (x:xs) (y:ys) = equivalenceExpr x y && equivalenceExprs xs ys
 equivalenceExprs _ _ = False
 
+-- TODO would be nice with a test case that checks that equivalencePrimitive
+-- TODO agrees with equivalenceExpr
 equivalencePrimitive :: PrimitiveP CanonExpr -> PrimitiveP CanonExpr -> Bool
 equivalencePrimitive p1 p2 = do
   let eqExpr e1 e2 = equivalenceExpr e1 e2

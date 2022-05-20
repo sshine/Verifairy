@@ -1,0 +1,9 @@
+attacker [passive]
+principal A [
+  knows password ctarget26
+  outer26 = PW_HASH(ctarget26)
+  leaks outer26
+]
+queries [
+  confidentiality? ctarget26
+]

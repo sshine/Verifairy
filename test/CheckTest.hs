@@ -21,7 +21,7 @@ import qualified Hedgehog.Range
 import Test.Tasty.Hspec
 
 import VerifPal.Types
-import VerifPal.Check (process, ModelState(..), ModelError(..), ProcessingCounter, CanonExpr(..),CanonKnowledge(..), equationToList, equivalenceExpr, simplifyExpr, decanonicalizeExpr, mapPrimitiveP)
+import VerifPal.Check (process, ModelState(..), ModelError(..), ProcessingCounter, CanonExpr(..),CanonKnowledge(..), equationToList, equivalenceExpr, simplifyExpr, decanonicalizeExpr, mapPrimitiveP, emptyModelState)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Graph.Inductive (mkGraph, OrdGr(..))
@@ -58,6 +58,7 @@ spec_parsePrincipal = do
           ], msErrors = [], msQueryResults = []
           , msConfidentialityGraph = OrdGr (mkGraph [] [])
           , msPrincipalConfidentialityGraph = Map.empty
+          , msPrincipalConfidentialitySet = Map.empty
           }
 
 shouldOverlapWith :: ModelState -> Constant -> Expectation
@@ -87,6 +88,13 @@ shouldHaveEquivalence modelState wantedConstants =
   msQueryResults modelState `shouldSatisfy` any predicate
   where
     predicate (Query (EquivalenceQuery actualConstants) _queryOptions, True) =
+      actualConstants == Prelude.map (\c -> Constant (Data.Text.toLower c)) wantedConstants
+    predicate _ = False
+shouldNotHaveEquivalence :: ModelState -> [Text] -> Expectation
+shouldNotHaveEquivalence modelState wantedConstants =
+  msQueryResults modelState `shouldSatisfy` any predicate
+  where
+    predicate (Query (EquivalenceQuery actualConstants) _queryOptions, False) =
       actualConstants == Prelude.map (\c -> Constant (Data.Text.toLower c)) wantedConstants
     predicate _ = False
 
@@ -120,15 +128,8 @@ shouldHaveNotFresh modelState constant =
     isNotFresh _ = False
 
 mkModelState :: [(Text, Knowledge)] -> ModelState
-mkModelState constants = ModelState
-  { msConstants = mkConstants constants
-  , msPrincipalConstants = Map.empty
-  , msProcessingCounter = 0
-  , msQueryResults = []
-  , msErrors = []
-  , msConfidentialityGraph = OrdGr (mkGraph [] [])
-  , msPrincipalConfidentialityGraph = Map.empty
-  }
+mkModelState constants =
+  emptyModelState { msConstants = mkConstants constants }
 
 mkConstants :: [(Text, Knowledge)] -> Map Constant Knowledge
 mkConstants constants =
@@ -519,6 +520,7 @@ spec_confidentiality = do
     it "confidentiality23 MAC(PW_HASH(sa),G^ctarget) -> ctarget" $ do
       let modelState = process confidentiality23_ast
       shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "pw_sa"
       modelState `shouldNotHaveConfidentiality` "ctarget23"
     it "confidentiality24" $ do
       let modelState = process confidentiality24_ast
@@ -538,6 +540,22 @@ spec_confidentiality = do
       modelState `shouldHaveConfidentiality` "b_hash"
       modelState `shouldNotHaveConfidentiality` "outer_a"
       modelState `shouldNotHaveConfidentiality` "outer_b"
+    it "confidentiality26 PW_HASH(pw) works" $ do
+      let modelState = process confidentiality26_ast
+      shouldNotFail modelState
+      modelState `shouldHaveConfidentiality` "ctarget26"
+    it "confidentiality27 HKDF using passwords" $ do
+      let modelState = process confidentiality27_ast
+      shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "ctarget27_a"
+      modelState `shouldNotHaveConfidentiality` "second27_a"
+      modelState `shouldHaveConfidentiality` "ctarget27_b"
+      modelState `shouldHaveConfidentiality` "second27_b"
+    it "confidentiality28 RINGSIGN(SPLIT(CONCAT()))" $ do
+      let modelState = process confidentiality28_ast
+      shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "x"
+      modelState `shouldNotHaveConfidentiality` "ctarget"
     it "foreign_models/verifpal/test/ql.vp" $ do
       let modelState = process foreign_verifpal_test_ql_ast
       shouldNotFail modelState
@@ -558,6 +576,24 @@ spec_confidentiality = do
       let modelState = process foreign_verifpal_test_pw_hash2_ast
       shouldNotFail modelState
       modelState `shouldHaveConfidentiality` "a"
+
+spec_shamir :: Spec
+spec_shamir = do
+  describe "shamir secret sharing" $ do
+    it "shamir1.vp" $ do
+      let modelState = process shamir1_ast
+      shouldNotFail modelState
+      modelState `shouldHaveEquivalence` ["asecret", "restored_b", "restored_c"]
+      modelState `shouldNotHaveEquivalence` ["asecret", "not_restored_c"]
+      modelState `shouldHaveEquivalence` ["b1","s1"]
+      modelState `shouldHaveEquivalence` ["c2","s2"]
+      modelState `shouldHaveEquivalence` ["s3","c3"]
+      modelState `shouldHaveConfidentiality` "s2"
+      modelState `shouldHaveConfidentiality` "s3"
+      modelState `shouldHaveConfidentiality` "asecret"
+      modelState `shouldHaveConfidentiality` "restored_b"
+      modelState `shouldHaveConfidentiality` "restored_c"
+
 
 genKnowledge :: MonadGen m => m CanonKnowledge
 genKnowledge =
@@ -951,11 +987,13 @@ isConfidential _ = False
 
 mapPW_HASH' :: CanonExpr -> (CanonExpr -> CanonExpr) -> CanonExpr
 mapPW_HASH' old f = do
+  -- TODO this really has nothing to do with PW_HASH and should probably
+  -- be lifted out into Check.hs where it might be useful for other things.
   let mapit c exp = c (f exp)
   case old of
     CG exp -> mapit CG exp
     (:^^:) exp1 exp2 ->
-      mapit (\e2 -> (:^^:) (mapit (\e1 -> e1) exp1) e2) exp2
+      mapit (\e2 -> (:^^:) (mapit (\e1 -> f e1) exp1) e2) exp2
     CConstant _ _ -> f old
     CItem n exp -> mapit (CItem n) exp
     CPrimitive p hasg ->
@@ -966,12 +1004,7 @@ mapPW_HASH old f = mapPW_HASH' (f old) f
 
 hprop_bruteforcePasswords :: Hedgehog.Property
 hprop_bruteforcePasswords =
-  -- TODO FIXME this test currently finds a lot of problematic values,
-  -- as our method for tracking bruteforcability is kind of broken.
-  -- A better approach would probably be to pull out the CPassword nodes
-  -- in the attacker-reachable graph, then walk backwards and add bruteforce-edges
-  -- until we see a PW_HASH.
-  withTests 100 $ withDiscards 10000 $ withShrinks 30 $ property $ do
+  withTests 2000 $ withDiscards 30000 $ withShrinks 40 $ property $ do
   c_expr <- forAll $ genCanonExprWithKnowledge ("target",CPassword)
   let pw_const = Constant "ctarget"
   -- "ctarget" will be a password
@@ -1018,42 +1051,45 @@ hprop_bruteforcePasswords =
                 _ -> me
           ms2 = process modelD
           wasConfB = isConfidential (msQueryResults ms2)
-      classify "PW_HASH -> HASH" (not wasConfB)
-      if ms /= ms2
+      if (ms /= ms2 && msErrors ms2 == [])
         then do
-        annotateShow (ms)
-        annotateShow (ms2)
-        wasConfB === False -- we replaced the pw hashes, so it should not be bruteforceable now, at least if pw was at a leaf
+        classify "ConfB" (wasConfB)
+        classify "made public" map_public
+        if map_public
+          then do
+          annotateShow (ms)
+          annotateShow (ms2)
+          (wasConfB) === False -- we replaced the pw hashes, so it should not be bruteforceable now, at least if pw was at a leaf
+          else pure ()
         else discard -- our map didn't change anything
       else do
-      -- was not confidential in the first place, so we should map HASH -> PW_HASH
-      -- and see if that makes it confidential
-      map_hash <- forAll $ Hedgehog.Gen.element [True,True,True,True,False]
-      map_concat <- forAll $ Hedgehog.Gen.element [True,True,True,True,False]
+      --
+      -- Was not confidential in the first place. We hash our password properly
+      -- by wrapping it in PW_HASH, and thus it should be private again.
+      --
+      --map_hash <- forAll $ Hedgehog.Gen.element [True,True,True,True,False]
+      --map_concat <- forAll $ Hedgehog.Gen.element [True,True,True,True,False]
       let (_const3,modelE') = buildModelState way_more_pw_hash
           modelE = queryPassword $ leakOthers modelE'
           way_more_pw_hash =  mapPW_HASH c_expr $
             \me -> do
               case me of
-                CPrimitive (HASH []) _ -> me
-                CPrimitive (HASH x) hasg | map_hash -> CPrimitive (PW_HASH x) hasg
-                CPrimitive (CONCAT x) hasg | map_concat -> CPrimitive (PW_HASH x) hasg
-                CConstant c CPassword | c == pw_const && not (map_hash || map_concat) -> CConstant pw_const CPrivate
+                --CPrimitive (HASH []) _ -> me
+                --CPrimitive (HASH x) hasg | map_hash -> CPrimitive (PW_HASH x) hasg
+                --CPrimitive (CONCAT x) hasg | map_concat -> CPrimitive (PW_HASH x) hasg
+                CConstant c CPassword | c == pw_const ->
+                                        CPrimitive (PW_HASH [CConstant pw_const CPrivate]) HasntQuestionMark
                 _ -> me
           ms3 = process modelE
           wasConfC = isConfidential (msQueryResults ms3)
-      classify "HASH -> PW_HASH" (map_hash && wasConfC)
-      classify "CONCAT -> PW_HASH" (map_concat && wasConfC)
-      if (ms /= ms3)
-        then do
+      --classify "HASH -> PW_HASH" (map_hash && wasConfC)
+      --classify "CONCAT -> PW_HASH" (map_concat && wasConfC)
+      if (ms == ms3 || msErrors ms3 /= [])
+        then discard
+        else do
+        classify "added PW_HASH(pw)" True
         annotateShow (ms3)
-        if not (map_hash || map_concat)
-          then do
-          if wasConfC /= True
-            then Hedgehog.diff ms (==) ms3
-            else wasConfC === True -- we replaced the hashes, so it should not be bruteforceable now. (if the password as at a leaf after the HASH/CONCAT at least)
-          else discard -- might have been at different leaf.
-        else discard -- our map didn't change anything
+        wasConfC === True
 
 hprop_fuzzConfidentiality :: Hedgehog.Property
 hprop_fuzzConfidentiality =
