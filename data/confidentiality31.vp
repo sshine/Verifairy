@@ -1,0 +1,18 @@
+attacker [passive]
+principal A [
+  knows password c1_31, c2, c3
+  pwh2 = PW_HASH(c2)
+  outer = HASH(
+     G^c1_31,
+     pwh2,
+     G^c3
+  )
+  leaks outer
+]
+queries [
+  // nothing is bruteforceable here because of PW_HASH(c2)
+  confidentiality? c1_31
+  confidentiality? c2
+  confidentiality? pwh2
+  confidentiality? c3
+]

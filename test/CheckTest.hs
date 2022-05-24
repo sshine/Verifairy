@@ -49,6 +49,7 @@ spec_parsePrincipal = do
       ModelState {
           msPrincipalConstants = fromList [("Alice",fromList [(Constant {constantName = "a"},(Generates,3)),(Constant {constantName = "c0"},(Public,0)),(Constant {constantName = "c1"},(Public,1)),(Constant {constantName = "m1"},(Private,2)),              (Constant {constantName = "nil"},(Public,0))])],
           msProcessingCounter = 4,
+          msPhases = [],
           msConstants = Map.fromList [
               (Constant "a",Generates),
               (Constant "c0",Public),
@@ -499,8 +500,8 @@ spec_confidentiality = do
     it "confidentiality19 HASH(password)" $ do
       let modelState = process confidentiality19_ast
       shouldNotFail modelState
-      modelState `shouldNotHaveConfidentiality` "pw"
       modelState `shouldNotHaveConfidentiality` "hashed_pw"
+      modelState `shouldNotHaveConfidentiality` "pw"
       modelState `shouldNotHaveConfidentiality` "pw2"
       modelState `shouldNotHaveConfidentiality` "pw3"
     it "confidentiality20 ENC(pw,sa) -> sa" $ do
@@ -551,11 +552,44 @@ spec_confidentiality = do
       modelState `shouldNotHaveConfidentiality` "second27_a"
       modelState `shouldHaveConfidentiality` "ctarget27_b"
       modelState `shouldHaveConfidentiality` "second27_b"
-    it "confidentiality28 RINGSIGN(SPLIT(CONCAT()))" $ do
+    it "confidentiality28 RINGSIGN(G^ctarget,_,_,_)" $ do
       let modelState = process confidentiality28_ast
       shouldNotFail modelState
       modelState `shouldNotHaveConfidentiality` "x"
       modelState `shouldNotHaveConfidentiality` "ctarget"
+      modelState `shouldNotHaveConfidentiality` "ca"
+    it "confidentiality29 HASH(G^c1, G^c2)" $ do
+      let modelState = process confidentiality29_ast
+      shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "c1"
+      modelState `shouldNotHaveConfidentiality` "c2"
+    it "confidentiality30 HASH(G^c1, c2, G^c3)" $ do
+      let modelState = process confidentiality30_ast
+      shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "c1"
+      modelState `shouldNotHaveConfidentiality` "c2"
+      modelState `shouldNotHaveConfidentiality` "c3"
+    it "confidentiality31 HASH(G^c1, PW_HASH(c2), G^c3)" $ do
+      let modelState = process confidentiality31_ast
+      shouldNotFail modelState
+      modelState `shouldHaveConfidentiality` "c1_31"
+      modelState `shouldHaveConfidentiality` "c2"
+      modelState `shouldHaveConfidentiality` "pwh2"
+      modelState `shouldHaveConfidentiality` "c3"
+    it "confidentiality32 HASH(G^c1, PW_HASH(c2), G^c3) leak PW_HASH(c2)" $ do
+      let modelState = process confidentiality32_ast
+      shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "c1_32"
+      modelState `shouldNotHaveConfidentiality` "pwh2" -- leaked
+      modelState `shouldHaveConfidentiality` "c2"
+      modelState `shouldNotHaveConfidentiality` "c3"
+    it "confidentiality33 HASH(G^c1, PW_HASH(c2), G^c3) leak c2" $ do
+      let modelState = process confidentiality33_ast
+      shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "c1_33"
+      modelState `shouldNotHaveConfidentiality` "pwh2"
+      modelState `shouldNotHaveConfidentiality` "c2" -- leaked
+      modelState `shouldNotHaveConfidentiality` "c3"
     it "foreign_models/verifpal/test/ql.vp" $ do
       let modelState = process foreign_verifpal_test_ql_ast
       shouldNotFail modelState

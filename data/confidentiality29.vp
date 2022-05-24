@@ -1,0 +1,14 @@
+attacker [passive]
+principal A [
+  knows password c1, c2
+  outer = HASH(
+     G^c1,
+     G^c2
+  )
+  leaks outer
+]
+queries [
+  // both ought to be bruteforceable:
+  confidentiality? c1
+  confidentiality? c2
+]

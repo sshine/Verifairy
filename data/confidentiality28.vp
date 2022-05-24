@@ -2,24 +2,19 @@ attacker [passive]
 principal A [
   knows password ctarget, ca
   knows private sa
-  x = SPLIT(CONCAT(G^ctarget))
-  outer =
-  RINGSIGN
-  (
+  x = G^ctarget
+  outer = RINGSIGN(
      x,
      sa,
-     SPLIT(
-       CONCAT(
-         PW_HASH (sa)?,
-         G^ca
-       )
-     ),
+     G^ca,
      sa
-  )?
+  )
   leaks ca, outer, sa // all but ctarget
 ]
 queries [
   // TODO ought to be bruteforceable?
+  confidentiality? sa
   confidentiality? x
   confidentiality? ctarget
+  confidentiality? ca
 ]
