@@ -35,6 +35,7 @@ data ModelError
   | MissingConstant Constant
   | ValueToValue Constant Constant
   | NotImplemented Text
+  | AssertionFailed CanonExpr CanonExpr
   deriving (Eq, Ord, Show)
 
 -- graph mapping constants to the expressions that *directly* contain them
@@ -51,6 +52,7 @@ data ModelState = ModelState
   , msPrincipalConstants :: Map PrincipalName (Map Constant (Knowledge, ProcessingCounter))
   , msProcessingCounter  :: ProcessingCounter
   , msErrors             :: [ModelError]
+  , msPhases             :: [(Phase, ProcessingCounter)] -- ^-- all constants known by Phase will have their counter <  ProcessingCounter
   , msQueryResults       :: [(Query, Bool)]
   -- need OrdGr in order to derive Ord for ModelState:
   , msConfidentialityGraph :: OrdGr Gr CanonExpr (Set (Set CanonExpr))
@@ -88,6 +90,7 @@ emptyModelState = ModelState
   , msPrincipalConstants = Map.empty
   , msProcessingCounter = 0
   , msErrors = []
+  , msPhases = []
   , msQueryResults = []
   , msConfidentialityGraph = OrdGr (mkGraph [] [])
   , msPrincipalConfidentialityGraph = Map.empty
@@ -130,6 +133,8 @@ upsertEdgeM edge@(a,b,ssc) = do
 
 addPasswordBruteforceEdges :: NodeMapM CanonExpr (Set (Set CanonExpr)) Gr ()
 addPasswordBruteforceEdges = do
+  -- by 3.2) we let the attacker bruteforce passwords if they do not
+  -- come from a PW_HASH() function
   (_nm, g) <- get
   let pw_g = labfilter (
         \n -> case n of
@@ -139,43 +144,52 @@ addPasswordBruteforceEdges = do
       pw_nodes = nodes pw_g
       f :: Context CanonExpr (Set (Set CanonExpr)) -> (CanonExpr,Node,Adj (Set (Set CanonExpr)),Bool)
       f (adj_in, node, label, adj_out) =
-        case label of
+        case simplifyExpr label of
           CPrimitive (PW_HASH _) _ -> (label,node,[], True)
           _ -> (label, node,adj_in, False)
       forest :: Data.Tree.Forest (CanonExpr,Node,Adj (Set (Set CanonExpr)),Bool)
-      forest = dffWith f pw_nodes g
+      forest = dffWith f (Data.List.reverse pw_nodes) g
+      -- TODO why is forest /== forests ?
+      -- would be nice to have a property test that detects when we use
+      -- "forest" instead of "forests" here; see confidentiality30.vp
+      forests = Data.List.map (\node -> dffWith f [node] g ) pw_nodes
       --foldTree :: (a -> [b] -> b) -> Tree a -> b
       asd :: Tree (CanonExpr,Node,Adj (Set (Set CanonExpr)),Bool) -> NodeMapM CanonExpr (Set (Set CanonExpr)) Gr ()
       asd tree = do
-        let (pw, pw_node, pw_edges_in, doesleak) = rootLabel tree
+        let (pw, pw_node, pw_edges_in, is_pwhash) = rootLabel tree
             containers = subForest tree
-        case doesleak of
+        case is_pwhash of
           True -> pure () -- stopped by a PW_HASH()
           False -> do
-            mapM_ (\cont -> do
-                      -- TODO what we actually need to do is remove ourselves from this edge:
+            foldM (\() cont -> do
+                      -- remove ourselves from this edge:
                       let o = find (\(_,edge_node) -> edge_node == cont_node
                                    ) pw_edges_in
-                          (label, cont_node, edg, ispwh) = rootLabel cont
+                          (label, cont_node, edg, next_ispwh) = rootLabel cont
                           preconditions = case o of
                             -- remove the password from the equation, so to speak:
                             --       label == HASH(pw,x,y) -> {{x,y}}
                             --       label == ENC(pw, msg) -> {{msg}}
-                            Just (old_preconds,_) -> Set.map (Set.filter ((/=) pw)) old_preconds
+                            Just (old_preconds,_) -> Set.map (Set.filter (\req -> not $ equivalenceExpr req pw)) old_preconds
                             -- under normal circumstances there would be no edge;
                             -- like: label == CG pw
                             --       lable == HASH(pw)
                             -- so here we allow them to bruteforce:
-                            Nothing -> Set.singleton $ Set.empty
-                      if ispwh
+                            Nothing ->
+                              Set.singleton $ Set.empty -- TODO would be nice to indicate that traversing this edge requires "bruteforce" ?
+                      if next_ispwh
                         then pure () -- PW_HASH(pw) does not lead to pw
-                        else upsertEdgeM (label, pw, preconditions)
-                      asd cont
-                  ) containers
-      fuck = foldM (\() x -> asd x) () forest
+                        else do
+                        upsertEdgeM (label, pw, preconditions)
+                        asd cont
+                  ) () containers
+            pure ()
+      analyzeAllTheForests = do
+        -- foldM (\() x -> asd x) () forest
+        foldM (\() forest -> foldM (\() x -> asd x) () forest) () forests
       -- Data.Tree.drawForest
   --() <- Debug.Trace.traceShow ("dff"::Text, ppDoc forest) $ pure ()
-  fuck
+  analyzeAllTheForests
   -- dffWith :: Graph gr => CFun a b c -> [Node] -> gr a b -> [Tree c]
   -- dffWith f pw_nodes g
   -- xdfWith :: Graph gr => CFun a b [Node] -> CFun a b c -> [Node] -> gr a b -> ([Tree c], gr a b)
@@ -186,28 +200,12 @@ addPasswordBruteforceEdges = do
   --       stop
   --     upsertEdgeM (node, parent, Set.singleton $ Set.singleton bruteforce)
 
-exprALeadsToPasswordB_ifC_M :: CanonExpr -> CanonExpr -> Set CanonExpr -> NodeMapM CanonExpr (Set (Set CanonExpr)) Gr ()
-exprALeadsToPasswordB_ifC_M (CPrimitive (PW_HASH _) _) _ _ = pure ()
-exprALeadsToPasswordB_ifC_M simpl pw@(CConstant _ CPassword) c = do
-  -- by 3.2) we let the attacker bruteforce passwords if they do not
-  -- come from a PW_HASH() function
-  -- TODO FIXME see note in hprop_bruteforcePasswords regarding how the approach
-  -- taken here is broken.
-  let c_filtered = Set.filter (
-        \y -> case y of
-                CConstant _ CPassword -> False
-                _ -> True
-        )  c
-  upsertEdgeM (simpl, pw, Set.singleton $ c_filtered) -- TODO instead of Set.empty we can toggle the bruteforce stuff by using a fake node?
-exprALeadsToPasswordB_ifC_M _ _ _ = pure ()
-
 upsertEdgePermutationsM :: [CanonExpr] -> CanonExpr -> NodeMapM CanonExpr (Set (Set CanonExpr)) Gr ()
 upsertEdgePermutationsM args lead_to = do
   let arg_set = Set.fromList args
   foldM (\() x -> do
             let diffset = Set.difference arg_set (Set.singleton x)
             upsertEdgeM (x, lead_to, Set.singleton $ diffset)
-            exprALeadsToPasswordB_ifC_M lead_to x diffset
         ) () args
 
 --
@@ -259,8 +257,6 @@ buildKnowledgeGraph ms = do
           CPrimitive (ENC key msg) _ -> do
             s_key <- foldCanonExpr key
             s_msg <- foldCanonExpr msg
-            -- the key can be bruteforced:
-            exprALeadsToPasswordB_ifC_M simpl s_key Set.empty
             -- learn msg by knowing ENC(key,msg) & key
             upsertEdgeM (simpl,s_msg,(Set.singleton $ Set.singleton s_key))
             -- reencrypt by knowing key & msg:
@@ -278,8 +274,6 @@ buildKnowledgeGraph ms = do
             s_key <- foldCanonExpr key
             s_plaintext <- foldCanonExpr plaintext
             s_ad <- foldCanonExpr ad
-            -- the key can be bruteforced:
-            --exprALeadsToPasswordB_ifC_M simpl s_key Set.empty
             -- attacker can compute AEAD_ENC() if they know all the args:
             upsertEdgePermutationsM [s_key,s_plaintext,s_ad] simpl
             -- attacker can decrypt if they know key and ad:
@@ -329,23 +323,28 @@ buildKnowledgeGraph ms = do
             pure simpl
           CItem n wever -> do
             s_wever <- foldCanonExpr wever
-            () <- case s_wever of
-                    -- TODO FIXME do we need this?:
-                    (CPrimitive (SPLIT (CPrimitive (CONCAT lst) _)) _) -> do
-                      simple_lst <- foldM (\acc exp -> do
-                                              x <- foldCanonExpr exp
-                                              pure (x:acc)
-                                          ) [] (Data.List.reverse lst)
-                      case Data.List.drop n simple_lst of
-                        item:_ -> do
-                          upsertEdgeM (simpl,item,edge_always)
-                          upsertEdgeM (item,simpl,edge_always)
-                          pure ()
-                        [] -> pure ()
-                    (CPrimitive (SPLIT _) _) -> do
-                      upsertEdgeM (s_wever, simpl, edge_always)
+            --upsertEdgeM (wever, simpl, edge_always) -- explicitly not the simple version
+            let getitem lst = do
+                  simple_lst <- foldM (\acc exp -> do
+                                          x <- foldCanonExpr exp
+                                          pure (x:acc)
+                                      ) [] (Data.List.reverse lst)
+                  case Data.List.drop n simple_lst of
+                    item:_ -> do
+                      upsertEdgeM (simpl,item,edge_always)
+                      upsertEdgeM (item,simpl,edge_always)
+                      pure ()
+                    [] -> pure ()
+            () <- case wever of
+                    (CPrimitive (SPLIT maybeconcat) _) -> do
+                      upsertEdgeM (maybeconcat, wever, edge_always)
+                      upsertEdgeM (maybeconcat, simpl, edge_always)
+                      case maybeconcat of
+                        (CPrimitive (CONCAT lst) _) -> do
+                          getitem lst
+                        _bad -> pure ()
                     (CPrimitive (HKDF _ _ _) _) -> do
-                      upsertEdgeM (s_wever, simpl, edge_always)
+                        upsertEdgeM (wever,simpl,edge_always)
                     _ -> pure ()
             pure simpl -- TODO
           CConstant _ CPublic -> do
@@ -356,8 +355,6 @@ buildKnowledgeGraph ms = do
             pure simpl -- the attacker knows nothing, john snow
           CG secret -> do
             s_secret <- foldCanonExpr secret
-            -- allow bruteforcing G^pw:
-            exprALeadsToPasswordB_ifC_M simpl s_secret Set.empty
             -- attacker can always lift to the power of G
             upsertEdgeM (s_secret, simpl, edge_always)
             pure simpl
@@ -569,6 +566,15 @@ buildKnowledgeGraph ms = do
                         _ -> pure ()
                   ) () $ Map.assocs principalMap
             pure () ) () $ Map.assocs $ msPrincipalConstants ms
+  (_nm, g) <- get
+  -- TODO FIXME: unclear if we need this; probably not:
+  foldM (\() (_n,v) -> case v of
+            CPrimitive p HasQuestionMark -> do
+              let unquestioned = (CPrimitive p HasntQuestionMark)
+              upsertMapNodeM unquestioned
+              upsertEdgeM (unquestioned,v,edge_always)
+              upsertEdgeM (v,unquestioned,edge_always)
+            _ -> pure ()) () (labNodes g)
   addPasswordBruteforceEdges
   (_nm, g) <- get
   case Data.Graph.Inductive.Query.DFS.isConnected g of
@@ -711,8 +717,10 @@ processModelPart (ModelMessage (Message sender receiver consts)) = do
         upsertPrincipalConstant receiver cconst knowledge
     -- TODO add consts to attacker knowledge
 
-processModelPart (ModelPhase (Phase {})) = do
-  pure ()
+processModelPart (ModelPhase (phase)) = do
+  count <- getCounter
+  modify (
+    \st -> st{msPhases = msPhases st ++ [(phase, count)]})
 
 processAssignment :: PrincipalName -> NonEmpty Constant -> Expr -> State ModelState ()
 processAssignment principalName lhs expr = do
@@ -733,14 +741,18 @@ processAssignment principalName lhs expr = do
           )
   --
   prMap <- gets (fromMaybe emptyPrincipalConstantMap . Map.lookup principalName . msPrincipalConstants)
-  -- TODO let simple_cexpr = simplifyExpr $ canonicalizeExpr (Map.map fst prMap) expr
-  let simple_cexpr = canonicalizeExpr (Map.map fst prMap) expr
+  let cexpr = canonicalizeExpr (Map.map fst prMap) expr
       constr ctr = do
-        case simple_cexpr of
+        case cexpr of
           CPrimitive (SPLIT {}) _ -> EItem ctr expr
           CPrimitive (HKDF {}) _ -> EItem ctr expr
           CPrimitive (SHAMIR_SPLIT {}) _ -> EItem ctr expr
+          -- TODO should we do this anytime lhs is a list of length > 1 ?
           _ -> expr
+  case cexpr of
+    CPrimitive (ASSERT a_e1 a_e2) _ | equivalenceExpr a_e1 a_e2 -> pure () -- succeeded
+    CPrimitive (ASSERT a_e1 a_e2) _ -> addError (AssertionFailed a_e1 a_e2)
+    _ -> pure ()
   foldM (
     \ctr constant ->
       do
@@ -953,7 +965,7 @@ simplifyExpr' skipPrimitive e = do
       | not skipPrimitive && idxa /= idxb && equivalenceExpr e_a e_b ->
         -- TODO may need simplifyExpr e_a
         -- TODO may need to sort e_a,e_b and return a deterministic element
-        e_a
+        simplifyExpr e_a
     --
     CPrimitive (SPLIT (CPrimitive (CONCAT (hd:_)) _)) _
       | not skipPrimitive -> simplifyExpr hd -- TODO is it correct to throw away the rest?
@@ -971,8 +983,8 @@ simplifyExpr' skipPrimitive e = do
           s_k2 = simplifyExpr k2
           s_m2 = simplifyExpr m2
       if (equivalenceExpr s_k s_k2) && (equivalenceExpr s_m s_m2)
-      then (CPrimitive (SIGN s_a s_m) hasq)
-      else (CPrimitive (UNBLIND s_k s_m (CPrimitive (SIGN s_a (CPrimitive (BLIND s_k2 s_m2) hasq'')) hasq')) hasq)
+      then (CPrimitive (SIGN s_a s_m) HasntQuestionMark)
+      else (CPrimitive (UNBLIND s_k s_m (CPrimitive (SIGN s_a (CPrimitive (BLIND s_k2 s_m2) HasntQuestionMark)) HasntQuestionMark)) HasntQuestionMark)
     -- SIGNVERIF(G^k,m,SIGN(k,m)) -> m
     CPrimitive (SIGNVERIF g_key message (CPrimitive (SIGN key message') hasq')) hasq
       | not skipPrimitive -> do
@@ -983,7 +995,7 @@ simplifyExpr' skipPrimitive e = do
       if (equivalenceExpr simple_g_key (CG simple_key) &&
           equivalenceExpr simple_message simple_message')
          then simple_message
-         else (CPrimitive (SIGNVERIF simple_g_key simple_message (CPrimitive (SIGN simple_key simple_message') hasq')) hasq)
+         else (CPrimitive (SIGNVERIF simple_g_key simple_message (CPrimitive (SIGN simple_key simple_message') HasntQuestionMark)) HasntQuestionMark)
 
     -- DEC(k, ENC(k, payload)) -> payload
     CPrimitive (DEC key encrypted) hasq | not skipPrimitive -> do
@@ -993,9 +1005,9 @@ simplifyExpr' skipPrimitive e = do
         -- remove the key:
         CPrimitive (ENC simple_key' payload) _
           | equivalenceExpr simple_key simple_key' -> simplifyExpr payload
-        _ -> CPrimitive (DEC simple_key simple_enc) hasq
+        _ -> CPrimitive (DEC simple_key simple_enc) HasntQuestionMark
     -- AEAD_DEC(k, AEAD_ENC(k, payload, ad), ad) -> payload
-    CPrimitive (AEAD_DEC key encrypted ad) hasq
+    CPrimitive (AEAD_DEC key encrypted ad) _hasq
       | not skipPrimitive-> do
       let simple_enc = simplifyExpr encrypted
           simple_key = simplifyExpr key
@@ -1004,10 +1016,10 @@ simplifyExpr' skipPrimitive e = do
         -- remove the dec(enc()) if key and ad match:
         CPrimitive (AEAD_ENC simple_key' payload simple_ad') _
           | equivalenceExpr simple_key simple_key' && equivalenceExpr simple_ad simple_ad' -> simplifyExpr payload
-        _ -> CPrimitive (AEAD_DEC simple_key simple_enc simple_ad) hasq
+        _ -> CPrimitive (AEAD_DEC simple_key simple_enc simple_ad) HasntQuestionMark
     -- TODO may need: CPrimitive ep hasq -> CPrimitive (mapPrimitiveP ep simplifyExpr) hasq
-    CPrimitive p hq | skipPrimitive -> simplifyExpr' False (CPrimitive (mapPrimitiveP p (simplifyExpr)) hq)
-    CPrimitive p hq -> CPrimitive p hq
+    CPrimitive p _hq | skipPrimitive -> simplifyExpr' False (CPrimitive (mapPrimitiveP p (simplifyExpr)) HasntQuestionMark)
+    CPrimitive p hq -> CPrimitive p HasntQuestionMark
     CItem idx old_e -> do
       let simple_e = simplifyExpr old_e
           default_item = CItem idx simple_e
