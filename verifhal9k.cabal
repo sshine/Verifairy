@@ -17,6 +17,7 @@ library
       VerifPal.Check
       VerifPal.Pretty
       VerifPal.Version
+      VerifPal.Prolog
   other-modules:
       Paths_verifhal9k
   hs-source-dirs:

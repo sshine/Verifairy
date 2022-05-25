@@ -20,6 +20,7 @@ import VerifPal.Parser (parseModel)
 import VerifPal.Pretty (myAnnotate, prettifyModelState, prettifyCanonExpr,colorYellow)--, prettifyConfidentialityGraph)
 import VerifPal.Version (gitBuildInfo)
 import VerifPal.Types (Constant(..), Expr(..))
+import VerifPal.Prolog (toProlog)
 import Data.Map(lookup) --lookup)
 import Text.Show.Pretty (ppDoc)
 import Data.GraphViz
@@ -33,7 +34,8 @@ data Args = Args
     simplify :: String,
     dotFile :: String,
     verbose :: Bool,
-    ignore_constraints :: Bool
+    ignore_constraints :: Bool,
+    prologFile :: String
   }
   deriving (Show)
 
@@ -44,6 +46,7 @@ argsHandler :: Args -> IO ()
 argsHandler Args {srcFile = srcFile
                  , simplify=simplify
                  , dotFile=dotFile
+                 , prologFile=prologFile
                  , ignore_constraints = ignore_constraints
                  , verbose = verbose} = do
   srcText <- Text.readFile srcFile
@@ -88,6 +91,9 @@ argsHandler Args {srcFile = srcFile
              case Data.Map.lookup ("attacker"::Text) (msPrincipalConfidentialityGraph ms) of
                Just gr -> gr
                Nothing -> msConfidentialityGraph ms -- TODO allow choosing principal
+      --
+      unless (prologFile == "") $
+        do Text.writeFile prologFile $ Text.pack $ VerifPal.Prolog.toProlog model
       --
       -- TODO should make a Diagnostic here for each of these:
       traverse_ print (reverse $ msErrors ms)
@@ -192,7 +198,7 @@ argsParserInfo =
     ]
 
 argsParser :: Parser Args
-argsParser = Args <$> srcFileParser <*> simplify <*> dotFile <*> verbose <*> ignore_constraints
+argsParser = Args <$> srcFileParser <*> simplify <*> dotFile <*> verbose <*> ignore_constraints <*> prologFile
   where
     verbose = flag False True . mconcat $ [
       short 'v' <> help "be (extremely) verbose"
@@ -208,6 +214,8 @@ argsParser = Args <$> srcFileParser <*> simplify <*> dotFile <*> verbose <*> ign
                           )
     dotFile = option str (long "dot-file" <> value "" <>
                           help "outputs a 'dot'/graphviz file: '--dot-file x.dot ; dot x.dot -Tsvg -o x.svg'")
+    prologFile = option str (long "prolog-file" <> value "" <>
+                             help "outputs a prolog data file: '--prolog-file model.prolog")
     srcFileParser =
       strArgument . mconcat $
         [ metavar "<FILE.vp>"

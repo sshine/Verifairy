@@ -28,6 +28,7 @@ library:
     - VerifPal.Check
     - VerifPal.Pretty
     - VerifPal.Version
+    - VerifPal.Prolog
   source-dirs: src
 
 tests:
