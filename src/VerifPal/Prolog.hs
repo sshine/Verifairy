@@ -45,7 +45,7 @@ modelPartToProlog (ModelPrincipal (Principal pNameText pKnows)) =
                     Leaks -> ("leaks("++ pName ++ "," ++ lhs ++")")
                     Assignment expr ->
                       let prologExpr = exprToProlog expr
-                      in ("knows_private(" ++ pName ++ "," ++ prologExpr ++ ")")
+                      in ("knows_assignment(" ++ pName ++ "," ++ lhs ++ "," ++ prologExpr ++ ")")
               in out:acc
             --(_, Just _)
             -- | Data.List.elem knowledge [Private,Public,Generates,Leaks] ->
