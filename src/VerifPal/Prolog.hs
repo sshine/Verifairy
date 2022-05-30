@@ -30,6 +30,17 @@ modelQueryToProlog (Query (ConfidentialityQuery (Constant c)) _) =
 modelPartToProlog :: ModelPart -> [String]
 modelPartToProlog (ModelPrincipal (Principal pNameText pKnows)) =
   let pName = "principal_" ++ (Data.Text.unpack pNameText)
+      basic knowledge lhs =
+        case knowledge of
+          Password -> ("knows_password("++ pName ++ "," ++ lhs ++")")
+          Private -> ("knows_private("++ pName ++ "," ++ lhs ++")")
+          Public -> ("knows_public("++ pName ++ "," ++ lhs ++")")
+          Generates -> ("knows_generates("++ pName ++ "," ++ lhs ++")")
+          Leaks -> ("leaks("++ pName ++ "," ++ lhs ++")")
+          Assignment expr ->
+            let prologExpr = exprToProlog expr
+            in ("knows_assignment(" ++ pName ++ "," ++ lhs ++
+                 "," ++ prologExpr ++ ")")
       folded :: [String]
       folded =
         foldl' (
@@ -37,24 +48,38 @@ modelPartToProlog (ModelPrincipal (Principal pNameText pKnows)) =
           case Data.List.NonEmpty.uncons cs of
             (Constant lhs_text, Nothing) ->
               let lhs = Data.Text.unpack lhs_text
-                  out = case knowledge of
-                    Password -> ("knows_password("++ pName ++ "," ++ lhs ++")")
-                    Private -> ("knows_private("++ pName ++ "," ++ lhs ++")")
-                    Public -> ("knows_public("++ pName ++ "," ++ lhs ++")")
-                    Generates -> ("knows_generates("++ pName ++ "," ++ lhs ++")")
-                    Leaks -> ("leaks("++ pName ++ "," ++ lhs ++")")
-                    Assignment expr ->
-                      let prologExpr = exprToProlog expr
-                      in ("knows_assignment(" ++ pName ++ "," ++ lhs ++ "," ++ prologExpr ++ ")")
+                  out = basic knowledge lhs
               in out:acc
-            --(_, Just _)
-            -- | Data.List.elem knowledge [Private,Public,Generates,Leaks] ->
-            --   fold over cs and generate separate statements :acc
+            (Constant _, Just _) ->
+              let f =
+                    Data.List.reverse $
+                    Data.List.NonEmpty.toList $
+                    Data.List.NonEmpty.map (
+                    \(Constant lhs) -> basic knowledge (
+                      Data.Text.unpack lhs)) cs
+              in
+                case knowledge of
+                  --   fold over cs and generate separate statements :acc
+                  Private -> f ++ acc
+                  Public -> f ++ acc
+                  Generates -> f ++ acc
+                  Leaks -> f ++ acc
+                  Password -> f ++ acc
+                  Assignment _ -> f ++ acc -- should be a fold generating item(0, ...)
+                  Received _ -> f ++ acc
         ) ["principal(" ++ pName ++ ")"] pKnows
   in Data.List.reverse folded
 
-modelPartToProlog (ModelMessage (Message a b m)) =
-  ["% ModelMessage not implemented"]
+modelPartToProlog (ModelMessage (Message a b msgs)) =
+  --["% ModelMessage not implemented"]
+  map
+  (\(Constant const, guarded) ->
+     "message(" ++ (Data.Text.unpack a) ++ ", " ++
+     (Data.Text.unpack b) ++ ", " ++ (Data.Text.unpack const) ++
+     ", " ++ (if guarded
+              then "true"
+              else "false") ++ ")"
+  ) msgs
 
 modelPartToProlog (ModelPhase (Phase phase)) =
   ["% phase " ++ show phase]
