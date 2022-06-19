@@ -11,6 +11,7 @@ import Control.Monad
 primitiveToProlog :: PrimitiveP String -> String
 primitiveToProlog p =
   case p of
+    CONCAT exps -> "p_concat([" ++ (Data.List.intercalate "," exps) ++ "])"
     HASH exps -> "p_hash([" ++ (Data.List.intercalate "," exps) ++"])"
     PW_HASH exps -> "p_pwhash([" ++ (Data.List.intercalate "," exps) ++"])"
     ENC e1 e2 -> "p_enc([" ++ (Data.List.intercalate "," [e1,e2]) ++"])"
@@ -66,7 +67,7 @@ modelPartToProlog (ModelPrincipal (Principal pNameText pKnows)) =
                   Leaks -> f ++ acc
                   Password -> f ++ acc
                   Assignment _ -> f ++ acc -- should be a fold generating item(0, ...)
-                  Received _ -> f ++ acc
+                  Received _ -> acc -- ignored, the Message should suffice.
         ) ["principal(" ++ pName ++ ")"] pKnows
   in Data.List.reverse folded
 
