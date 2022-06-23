@@ -40,7 +40,7 @@ exprToProlog :: Expr -> String
 exprToProlog cexpr =
   case cexpr of
     EConstant (Constant x) -> Data.Text.unpack x
-    G x -> "p_G(" ++ (exprToProlog x) ++ ")"
+    G x -> "p_G([" ++ (exprToProlog x) ++ "])"
     (:^:) con exp -> "p_dh([" ++ (exprToProlog (EConstant con)
                                  ) ++ "," ++ (exprToProlog exp) ++ "])"
     EPrimitive p _ -> primitiveToProlog $ mapPrimitiveP p exprToProlog
