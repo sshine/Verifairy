@@ -59,7 +59,8 @@ modelQueryToProlog (Query (AuthenticationQuery _) _) =
 modelPartToProlog :: ModelPart -> [String]
 modelPartToProlog (ModelPrincipal (Principal pNameText pKnows)) =
   let pName = "principal_" ++ (Data.Text.unpack pNameText)
-      basic knowledge lhs =
+      basic :: Maybe Int -> Knowledge -> String -> String
+      basic item knowledge lhs =
         case knowledge of
           Password -> ("knows_password("++ pName ++ "," ++ lhs ++")")
           Private -> ("knows_private("++ pName ++ "," ++ lhs ++")")
@@ -68,8 +69,14 @@ modelPartToProlog (ModelPrincipal (Principal pNameText pKnows)) =
           Leaks -> ("leaks("++ pName ++ "," ++ lhs ++")")
           Assignment expr ->
             let prologExpr = exprToProlog expr
-            in ("knows_assignment(" ++ pName ++ "," ++ lhs ++
-                 "," ++ prologExpr ++ ")")
+                wrappedExpr = case item of
+                  Nothing -> prologExpr
+                  Just i -> "p_item(" ++ (show i) ++ "," ++ prologExpr ++ ")"
+                complete = ("knows_assignment(" ++ pName ++ "," ++ lhs ++
+                            "," ++ wrappedExpr ++ ")")
+            in if lhs == "_" -- assignments to _ are ignored
+               then "% " ++ complete
+               else complete
       folded :: [String]
       folded =
         foldl' (
@@ -77,15 +84,18 @@ modelPartToProlog (ModelPrincipal (Principal pNameText pKnows)) =
           case Data.List.NonEmpty.uncons cs of
             (Constant lhs_text, Nothing) ->
               let lhs = Data.Text.unpack lhs_text
-                  out = basic knowledge lhs
+                  out = basic Nothing knowledge lhs
               in out:acc
             (Constant _, Just _) ->
               let f =
+                    snd $
+                    foldl (
+                    \(i,acc) (Constant lhs) ->
+                      (i+1,
+                       (basic (Just i) knowledge (Data.Text.unpack lhs)):acc)
+                    ) (0,[]) $
                     Data.List.reverse $
-                    Data.List.NonEmpty.toList $
-                    Data.List.NonEmpty.map (
-                    \(Constant lhs) -> basic knowledge (
-                      Data.Text.unpack lhs)) cs
+                    Data.List.NonEmpty.toList cs
               in
                 case knowledge of
                   --   fold over cs and generate separate statements :acc
