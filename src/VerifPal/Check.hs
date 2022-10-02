@@ -152,44 +152,41 @@ addPasswordBruteforceEdges = do
       -- TODO why is forest /== forests ?
       -- would be nice to have a property test that detects when we use
       -- "forest" instead of "forests" here; see confidentiality30.vp
-      forests = Data.List.map (\node -> dffWith f [node] g ) pw_nodes
+      forests = (Data.List.map (\node -> dffWith f [node] g ) pw_nodes)
       --foldTree :: (a -> [b] -> b) -> Tree a -> b
-      asd :: Tree (CanonExpr,Node,Adj (Set (Set CanonExpr)),Bool) -> NodeMapM CanonExpr (Set (Set CanonExpr)) Gr ()
-      asd tree = do
-        let (pw, pw_node, pw_edges_in, is_pwhash) = rootLabel tree
-            containers = subForest tree
-        case is_pwhash of
-          True -> pure () -- stopped by a PW_HASH()
-          False -> do
-            foldM (\() cont -> do
-                      -- remove ourselves from this edge:
-                      let o = find (\(_,edge_node) -> edge_node == cont_node
-                                   ) pw_edges_in
-                          (label, cont_node, edg, next_ispwh) = rootLabel cont
-                          preconditions = case o of
-                            -- remove the password from the equation, so to speak:
-                            --       label == HASH(pw,x,y) -> {{x,y}}
-                            --       label == ENC(pw, msg) -> {{msg}}
-                            Just (old_preconds,_) -> Set.map (Set.filter (\req -> not $ equivalenceExpr req pw)) old_preconds
-                            -- under normal circumstances there would be no edge;
-                            -- like: label == CG pw
-                            --       lable == HASH(pw)
-                            -- so here we allow them to bruteforce:
-                            Nothing ->
-                              Set.singleton $ Set.empty -- TODO would be nice to indicate that traversing this edge requires "bruteforce" ?
-                      if next_ispwh
-                        then pure () -- PW_HASH(pw) does not lead to pw
-                        else do
-                        upsertEdgeM (label, pw, preconditions)
-                        asd cont
-                  ) () containers
-            pure ()
+      recurse :: CanonExpr -> Tree (CanonExpr,Node,Adj (Set (Set CanonExpr)),Bool) -> NodeMapM CanonExpr (Set (Set CanonExpr)) Gr ()
+      recurse pw tree =
+        let (top, top_node, top_edges_in, is_pwhash) = rootLabel tree in
+          if is_pwhash
+          then pure ()
+          else do
+            foldM (\() subtree -> do
+                      (_, g) <- get
+                      let (sub_label, sub_node, _edges, next_ispwh) = rootLabel subtree
+                          outgoing = lsuc g sub_node
+                      mapM_ (\(edge_node,old_preconds) ->
+                               if not next_ispwh
+                               then
+                                 case lab g edge_node of
+                                   Just receiver -> upsertEdgeM (sub_label,top,Set.map (Set.filter (\req -> req /= top && req /= sub_label && req /= pw)) old_preconds)
+                               else pure ()
+                            ) outgoing
+                      recurse pw subtree
+                  ) () (subForest tree)
       analyzeAllTheForests = do
         -- foldM (\() x -> asd x) () forest
-        foldM (\() forest -> foldM (\() x -> asd x) () forest) () forests
+        foldM (\() forest -> do
+                  foldM_ (\() forest ->
+                            let (pw,_,_,_) = rootLabel forest in
+                              recurse pw forest
+                         ) () forest
+              ) () forests
       -- Data.Tree.drawForest
-  --() <- Debug.Trace.traceShow ("dff"::Text, ppDoc forest) $ pure ()
   analyzeAllTheForests
+  (_nm, g') <- get
+  if g /= g' -- run until results have settled:
+    then addPasswordBruteforceEdges
+    else pure ()
   -- dffWith :: Graph gr => CFun a b c -> [Node] -> gr a b -> [Tree c]
   -- dffWith f pw_nodes g
   -- xdfWith :: Graph gr => CFun a b [Node] -> CFun a b c -> [Node] -> gr a b -> ([Tree c], gr a b)
@@ -206,6 +203,7 @@ upsertEdgePermutationsM args lead_to = do
   foldM (\() x -> do
             let diffset = Set.difference arg_set (Set.singleton x)
             upsertEdgeM (x, lead_to, Set.singleton $ diffset)
+            upsertEdgeM (lead_to, x, Set.singleton $ arg_set)
         ) () args
 
 --
@@ -343,8 +341,11 @@ buildKnowledgeGraph ms = do
                         (CPrimitive (CONCAT lst) _) -> do
                           getitem lst
                         _bad -> pure ()
-                    (CPrimitive (HKDF _ _ _) _) -> do
+                    (CPrimitive (HKDF a b c) _) -> do
                         upsertEdgeM (wever,simpl,edge_always)
+                        -- attacker can confirm knowledge of parameters a,b,c
+                        -- if they see a 'simpl' output:
+                        upsertEdgeM (simpl,wever, Set.singleton (Set.fromList [a,b,c]))
                     _ -> pure ()
             pure simpl -- TODO
           CConstant _ CPublic -> do
@@ -532,6 +533,8 @@ buildKnowledgeGraph ms = do
               CG secret -> do
                 -- attacker can decrypt if the know secret and simpl:
                 upsertEdgePermutationsM [secret,simpl] s_plaintext
+                -- attacker can re-encrypt if they know secret and message:
+                upsertEdgePermutationsM [secret,s_plaintext] simpl
                 pure simpl
               _ -> pure simpl -- TODO this should be a type error?
           CPrimitive (PKE_DEC key ciphertext) _ -> do
@@ -542,12 +545,12 @@ buildKnowledgeGraph ms = do
             -- re-encrypt:
             upsertEdgePermutationsM [simpl,s_key] s_ciphertext
             pure simpl
-  foldM (\st (const,_knowledge) -> do
+  foldM_ (\st (const,_knowledge) -> do
             let c_expr = canonicalizeExpr constmap (EConstant const)
             _ <- foldCanonExpr c_expr
             pure st
         ) () (Map.assocs constmap)
-  foldM (\() (principalName, principalMap) -> do
+  foldM_ (\() (principalName, principalMap) -> do
             let cprName = CConstant (Constant principalName) CPrivate
             upsertMapNodeM cprName
             foldM (\() (c,(knowledge,_counter)) -> do
@@ -659,9 +662,8 @@ computePrincipalKnowledge principalName = do
         -- that does not go through a PW_HASH iteration, that means the attacker
         -- can bruteforce it.
         let known_edges = Data.List.filter (
-              \(_,_,preconditions) -> any (
-                \s -> s `Set.isSubsetOf` currently_known
-                ) preconditions) reachable_edges
+              \(_,_,preconditions) -> any (`Set.isSubsetOf` currently_known
+                                          ) preconditions) reachable_edges
             maybe_graph = mkGraph reachable_nodes known_edges
             now_reachable =
               Data.Graph.Inductive.Query.DFS.reachable attacker maybe_graph
@@ -702,7 +704,7 @@ processModelPart (ModelQueries qs) = do
   -- TODO if the user wrote the same query twice
   -- we should collapse them to a single query
   -- and probably issue a warning?
-  
+
 
 processModelPart (ModelMessage (Message sender receiver consts)) = do
   forM_ consts $ \(cconst,_TODO_cguard) -> do

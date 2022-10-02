@@ -13,7 +13,7 @@ queries [
   // since we know pwh2 and outer, we can learn c1,c3 by bruteforce.
   // this test is similar to confidentiality31.vp, but it leaks the
   // hashed version which allow reconstruction of the other passwords.
-  confidentiality? c1_32   // yes
+  confidentiality? c1_32   // no
   confidentiality? pwh2 // no
   confidentiality? c2   // yes
   confidentiality? c3   // no
