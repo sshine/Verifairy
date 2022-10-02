@@ -1,0 +1,14 @@
+attacker[passive]
+
+principal A [
+  knows password pw1, pw2
+  pw1h = PW_HASH(pw1)
+  hashed = HASH(HASH(pw1h, pw2))
+  bad_hash1 = HASH(pw1)
+  leaks hashed, bad_hash1
+]
+
+queries [
+  confidentiality? pw1
+  confidentiality? pw2
+]

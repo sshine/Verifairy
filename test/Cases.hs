@@ -286,6 +286,21 @@ confidentiality33 = $(embedStringFile "data/confidentiality33.vp")
 confidentiality33_ast :: Model
 confidentiality33_ast = assertParseModel confidentiality33
 
+confidentiality34 :: Text
+confidentiality34 = $(embedStringFile "data/confidentiality34.vp")
+confidentiality34_ast :: Model
+confidentiality34_ast = assertParseModel confidentiality34
+
+confidentiality35 :: Text
+confidentiality35 = $(embedStringFile "data/confidentiality35.vp")
+confidentiality35_ast :: Model
+confidentiality35_ast = assertParseModel confidentiality35
+
+confidentiality36 :: Text
+confidentiality36 = $(embedStringFile "data/confidentiality36.vp")
+confidentiality36_ast :: Model
+confidentiality36_ast = assertParseModel confidentiality36
+
 shamir1 :: Text
 shamir1 = $(embedStringFile "data/shamir1.vp")
 shamir1_ast :: Model

@@ -1,0 +1,12 @@
+attacker [passive]
+principal A [
+  knows public x
+]
+queries [
+// Verifpal 0.26.1 - https://verifpal.com
+// Verifpal • Verification completed for 'confidentiality34.vp' at 07:44:49 PM. 
+// Verifpal • All queries pass. 
+// ??? why is this fine when confidentiality35.vp is not ???
+
+  confidentiality? x // no, since x is public
+]

@@ -590,6 +590,19 @@ spec_confidentiality = do
       modelState `shouldNotHaveConfidentiality` "pwh2"
       modelState `shouldNotHaveConfidentiality` "c2" -- leaked
       modelState `shouldNotHaveConfidentiality` "c3"
+    it "confidentiality34 public x" $ do
+      let modelState = process confidentiality34_ast
+      shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "x"
+    it "confidentiality35 public x, y=HASH(x)" $ do
+      let modelState = process confidentiality35_ast
+      shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "x"
+    it "confidentiality36 HASH(HASH(PW_HASH(pw1)), pw2) leak HASH(pw1)" $ do
+      let modelState = process confidentiality36_ast
+      shouldNotFail modelState
+      modelState `shouldNotHaveConfidentiality` "pw1"
+      modelState `shouldNotHaveConfidentiality` "pw2"
     it "foreign_models/verifpal/test/ql.vp" $ do
       let modelState = process foreign_verifpal_test_ql_ast
       shouldNotFail modelState
