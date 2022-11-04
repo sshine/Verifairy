@@ -1,4 +1,4 @@
-name: verifhal9k
+name: verifairy
 version: 0.1.0
 extra-source-files:
   - README.md
@@ -36,7 +36,7 @@ tests:
     main: test.hs
     source-dirs: test
     dependencies:
-      - verifhal9k
+      - verifairy
       - tasty
       - tasty-discover
       - tasty-hspec
@@ -45,26 +45,13 @@ tests:
       - hspec
       - hspec-megaparsec
       - file-embed
-#  propertytest:
-#    main: PropertyTest.hs
-#    source-dirs: test
-#    dependencies:
-#      - verifhal9k
-#      - tasty
-#      - tasty-discover
-#      - tasty-hspec
-#      - tasty-hedgehog
-#      - hedgehog
-#      - hspec
-#      - hspec-megaparsec
-#      - file-embed
 
 executables:
   verifairy:
     source-dirs: app
     main: Main.hs
     dependencies:
-      - verifhal9k
+      - verifairy
       - filepath
       - optparse-applicative
       - graphviz

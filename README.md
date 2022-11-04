@@ -1,4 +1,4 @@
-# VerifHAL-9000
+# Verifairy
 
 A Haskell implementation of VerifPal™.
 
