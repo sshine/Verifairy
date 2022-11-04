@@ -2,7 +2,7 @@
 
 module Main where
 
-import Control.Monad (unless)
+import Control.Monad (unless, when)
 import Data.Foldable (for_, traverse_)
 import Data.Function ((&))
 import qualified Data.Set as Set
@@ -56,20 +56,19 @@ argsHandler Args {..} = do
           fake_filename = "" -- TODO Parser.hs feeds in "" as the filename to "parse"
           diag' = addFile diag fake_filename (Text.unpack srcText)
        in printDiagnostic stderr True True 4 diag'
+
     Right model -> do
       Text.hPutStrLn stderr ("Processing file " <> Text.pack srcFile)
       let ms = VerifPal.Check.process model
       --
-      unless (not verbose) $
+      when verbose $
         do putStrLn ""
            putDoc (prettifyModelState ms)
            putStrLn ""
       --
-      case simplify of
-        "" -> pure ()
-        simplified ->
+      when (not (null simplify)) $
           do putStrLn ""
-             let target = EConstant (Constant {constantName = Text.pack simplified})
+             let target = EConstant (Constant {constantName = Text.pack simplify})
                  constmap = msConstants ms
                  c_expr = canonicalizeExpr constmap target
              putDoc (prettifyCanonExpr c_expr)
@@ -83,13 +82,13 @@ argsHandler Args {..} = do
       --putDoc (prettifyConfidentialityGraph (msConfidentialityGraph ms))
       --putStrLn ""
       --
-      unless (dotFile == "") $
+      when (not (null dotFile)) $
         do Text.writeFile dotFile $ mytoDot $
              case Data.Map.lookup ("attacker"::Text) (msPrincipalConfidentialityGraph ms) of
                Just gr -> gr
                Nothing -> msConfidentialityGraph ms -- TODO allow choosing principal
       --
-      unless (prologFile == "") $
+      when (not (null prologFile)) $
         do Text.writeFile prologFile $ Text.pack $ VerifPal.Prolog.toProlog model
       --
       -- TODO should make a Diagnostic here for each of these:
@@ -137,17 +136,18 @@ mytoDot g =
         --fillColor [colors !! a]
         --, Style [SItem filled []]
         ]
-      colors = cycle $ map color [ LightBlue
-                                   , Red
-                                   , Orange
-                                   --, Yellow
-                                   , Green
-                                   , Blue
-                                   , Purple
-                                   , Brown
-                                   , Pink
-                                   , Gray
-                                   ]
+      colors = cycle $ map color
+        [ LightBlue
+        , Red
+        , Orange
+        --, Yellow
+        , Green
+        , Blue
+        , Purple
+        , Brown
+        , Pink
+        , Gray
+        ]
       dotgraph :: DotGraph Data.Graph.Inductive.Graph.Node
       dotgraph = case g of
         Data.Graph.Inductive.Graph.OrdGr g ->
@@ -195,7 +195,12 @@ argsParserInfo =
     ]
 
 argsParser :: Parser Args
-argsParser = Args <$> srcFileParser <*> simplify <*> dotFile <*> verbose <*> ignore_constraints <*> prologFile
+argsParser = Args <$> srcFileParser
+                  <*> simplify
+                  <*> dotFile
+                  <*> verbose
+                  <*> ignoreConstraints
+                  <*> prologFile
   where
     verbose = flag False True . mconcat $ [
       short 'v' <> help "be (extremely) verbose"
