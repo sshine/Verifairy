@@ -1,3 +1,5 @@
+{-# LANGUAGE RecordWildCards #-}
+
 module Main where
 
 import Control.Monad (unless)
@@ -34,7 +36,7 @@ data Args = Args
     simplify :: String,
     dotFile :: String,
     verbose :: Bool,
-    ignore_constraints :: Bool,
+    ignoreConstraints :: Bool,
     prologFile :: String
   }
   deriving (Show)
@@ -43,12 +45,7 @@ main :: IO ()
 main = runArgsParser >>= argsHandler
 
 argsHandler :: Args -> IO ()
-argsHandler Args {srcFile = srcFile
-                 , simplify=simplify
-                 , dotFile=dotFile
-                 , prologFile=prologFile
-                 , ignore_constraints = ignore_constraints
-                 , verbose = verbose} = do
+argsHandler Args {..} = do
   srcText <- Text.readFile srcFile
   case parseModel srcText of
     Left bundle ->
@@ -102,7 +99,7 @@ argsHandler Args {srcFile = srcFile
         putStrLn ""
       -- Bail out if we have errors or failing queries:
       unless (null (msErrors ms)) exitFailure
-      unless (ignore_constraints || all snd (msQueryResults ms)) exitFailure
+      unless (ignoreConstraints || all snd (msQueryResults ms)) exitFailure
 
 mytoDot :: Show a => Show b => Data.Graph.Inductive.Graph.OrdGr Data.Graph.Inductive.PatriciaTree.Gr a (Set (Set b)) -> Text
 mytoDot g =
@@ -203,7 +200,7 @@ argsParser = Args <$> srcFileParser <*> simplify <*> dotFile <*> verbose <*> ign
     verbose = flag False True . mconcat $ [
       short 'v' <> help "be (extremely) verbose"
       ]
-    ignore_constraints = flag False True . mconcat $ [
+    ignoreConstraints = flag False True . mconcat $ [
       short 'i' <>
       help "exit code 0 even with failed constraints. useful with --dot-file"
       ]
