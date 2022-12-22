@@ -6,14 +6,13 @@ module VerifPal.Parser where
 import Control.Monad (void)
 import Data.Char (isLetter, isSpace, isNumber)
 import Data.Functor (($>))
-import Data.Map (Map)
-import qualified Data.Map as Map
+import Data.Map ()
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Text.Megaparsec
-import Text.Megaparsec.Char (eol, digitChar)
-import Text.Megaparsec.Char.Lexer (decimal)
+import Text.Megaparsec.Char (digitChar)
 import Data.Void (Void)
+import Data.List.NonEmpty
 
 import VerifPal.Types
 
@@ -29,7 +28,7 @@ parseModelPart :: Text -> Either (ParseErrorBundle Text Void) ModelPart
 parseModelPart = parse' modelPart
 
 parseModel :: Text -> Either (ParseErrorBundle Text Void) Model
-parseModel = parse' (space *> model)
+parseModel = parse' (space *> model <* space <* eof)
 
 model :: Parser Model
 model = do
@@ -64,7 +63,7 @@ principal = do
 message :: Parser Message
 message = do
   messageSender <- name
-  symbol "->"
+  choice [ symbol "->" , symbol "→"] -- TODO: document that we support this
   messageReceiver <- name
   symbol ":"
   messageConstants <- messageConstant `sepBy1` comma
@@ -124,36 +123,41 @@ query = do
       symbol "precondition"
       QueryOption <$> brackets message
 
-statements :: Parser [(Constant, Knowledge)]
+statements :: Parser [(NonEmpty Constant, Knowledge)]
 statements = concat <$> many knowledge
 
-knowledge :: Parser [(Constant, Knowledge)]
+knowledge :: Parser [(Data.List.NonEmpty.NonEmpty Constant, Knowledge)]
 knowledge = choice [ knows, generates, leaks, assignment ]
   where
+    mkNElst cs = Data.List.NonEmpty.fromList cs -- (Prelude.reverse cs)
     knows = do
       symbol1 "knows"
       visibility <- publicPrivatePassword
       cs <- constant `sepBy1` comma
-      pure [ (c, visibility) | c <- cs ]
+      pure [ (mkNElst cs, visibility) ]
 
-    generates :: Parser [(Constant, Knowledge)]
+    generates :: Parser [(NonEmpty Constant, Knowledge)]
     generates = do
       symbol1 "generates"
       cs <- constant `sepBy1` comma
-      pure [ (c, Generates) | c <- cs ]
+      pure [ (mkNElst cs, Generates) ]
 
-    leaks :: Parser [(Constant, Knowledge)]
+    leaks :: Parser [(NonEmpty Constant, Knowledge)]
     leaks = do
       symbol1 "leaks"
       cs <- constant `sepBy1` comma
-      pure [ (c, Leaks) | c <- cs ]
+      pure [ (mkNElst cs, Leaks) ]
 
-    assignment :: Parser [(Constant, Knowledge)]
+    assignment :: Parser [(NonEmpty Constant, Knowledge)]
     assignment = do
-      c <- constant
+      -- TODO what to do about split(), shamir_split() etc?
+      -- it would be nice if we could keep track of arity of both input
+      -- and output parameters. For now we read/parse the list of assigned
+      -- variables and throw them away:
+      cs <- constant `sepBy1` comma
       symbol "="
       e <- expr
-      pure [(c, Assignment e)]
+      pure [(mkNElst cs, Assignment e)]
 
 expr :: Parser Expr
 expr = choice [ g, primitive, constHat ]
@@ -179,16 +183,17 @@ expr = choice [ g, primitive, constHat ]
       , prim2 "PKE_DEC" PKE_DEC
       , prim3 "SIGNVERIF" SIGNVERIF
       , prim2 "SIGN" SIGN
-      , prim5 "RIGNSIGNVERIF" RINGSIGNVERIF
+      , prim5 "RINGSIGNVERIF" RINGSIGNVERIF
       , prim4 "RINGSIGN" RINGSIGN
       , prim2 "BLIND" BLIND
       , prim3 "UNBLIND" UNBLIND
       , prim1 "SHAMIR_SPLIT" SHAMIR_SPLIT
-      , prim3 "SHAMIR_JOIN" SHAMIR_JOIN
+      , prim2 "SHAMIR_JOIN" SHAMIR_JOIN
       ]
 
     prim1 :: Text -> (Expr -> Primitive) -> Parser Expr
     prim1 primName primOp = do
+      symbol primName
       prim <- parens (primOp <$> expr)
       question <- option HasntQuestionMark (symbol "?" $> HasQuestionMark)
       pure (EPrimitive prim question)
@@ -246,8 +251,11 @@ publicPrivatePassword = choice
 name :: Parser Text
 name = identifier "principal name"
 
+-- 3.1) Constants should be case-insensitive, hence Text.toLower.
+-- This means our later reporting might be slightly less user-friendly,
+-- but it saves use the trouble of having to keep track of lower/uppercase.
 constant :: Parser Constant
-constant = Constant <$> identifier "constant"
+constant = Constant <$> Text.toLower <$> identifier "constant"
 
 -- FIXME: "queries[...]" fails because it's being parsed as a Message sender
 identifier :: String -> Parser Text
@@ -281,12 +289,13 @@ space, space1 :: Parser ()
 space = space' >> void (many comment1')
 space1 = space1' <|> comment1'
 
+space', space1', comment1' :: Parser ()
 space' = void $ takeWhileP (Just "any whitespace") isSpace
 space1' = void $ takeWhile1P (Just "at least one whitespace") isSpace
 
 comment1' = void . some $ do
-  chunk "//"
-  takeWhileP (Just "comment") (not . isNewLine)
+  _ <- chunk "//"
+  _ <- takeWhileP (Just "comment") (not . isNewLine)
   space'
   where
     isNewLine = (== '\n')

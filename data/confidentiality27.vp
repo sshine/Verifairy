@@ -1,0 +1,15 @@
+attacker [passive]
+principal A [
+  knows password ctarget27_a, ctarget27_b
+  knows public sa
+  outer27_a, second27_a = HKDF(ctarget27_a, PW_HASH(sa), sa)
+  leaks outer27_a
+  outer27_b, second27_b = HKDF(PW_HASH(ctarget27_b), PW_HASH(sa), sa)
+  leaks outer27_b
+]
+queries [
+  confidentiality? ctarget27_a // no
+  confidentiality? second27_a  // no, should be able to reconstruct
+  confidentiality? ctarget27_b // yes
+  confidentiality? second27_b  // yes
+]

@@ -1,0 +1,16 @@
+attacker [passive]
+principal A [
+  knows private sa
+  outer = SPLIT(SPLIT(CONCAT(sa,nil)))
+  leaks sa
+]
+A -> B: sa
+principal B [
+  magic = SPLIT(SPLIT(CONCAT(sa,niL)))
+]
+queries [
+  confidentiality? sa
+  confidentiality? outer
+  confidentiality? magic
+  equivalence? outer, magic
+]

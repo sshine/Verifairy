@@ -1,0 +1,8 @@
+attacker[passive]
+principal A [
+  knows public a
+  b = a           // this is not legal in verifpal
+]
+queries [
+  equivalence? a, b
+]

@@ -1,0 +1,10 @@
+attacker [passive]
+principal A [
+  knows private sa
+  outer = CONCAT(G^sa, HASH(sa,sa))
+]
+principal A [ leaks sa ]
+queries [
+  confidentiality? sa
+  confidentiality? outer
+]

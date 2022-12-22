@@ -1,4 +1,4 @@
-name: verifhal9k
+name: verifairy
 version: 0.1.0
 extra-source-files:
   - README.md
@@ -10,6 +10,12 @@ dependencies:
   - mtl
   - optparse-generic
   - text
+  - fgl
+  - githash
+  - prettyprinter
+  - prettyprinter-ansi-terminal
+  - diagnose == 1.8.1
+  - pretty-show
 
 default-extensions:
   - OverloadedStrings
@@ -20,6 +26,9 @@ library:
     - VerifPal.Types
     - VerifPal.Parser
     - VerifPal.Check
+    - VerifPal.Pretty
+    - VerifPal.Version
+    - VerifPal.Prolog
   source-dirs: src
 
 tests:
@@ -27,7 +36,7 @@ tests:
     main: test.hs
     source-dirs: test
     dependencies:
-      - verifhal9k
+      - verifairy
       - tasty
       - tasty-discover
       - tasty-hspec
@@ -36,3 +45,13 @@ tests:
       - hspec
       - hspec-megaparsec
       - file-embed
+
+executables:
+  verifairy:
+    source-dirs: app
+    main: Main.hs
+    dependencies:
+      - verifairy
+      - filepath
+      - optparse-applicative
+      - graphviz

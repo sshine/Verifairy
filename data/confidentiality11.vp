@@ -1,0 +1,10 @@
+attacker [passive]
+principal A [
+  knows private sa
+  outer = RINGSIGN(sa, SPLIT(CONCAT(MAC(G^sa,G^sa),sa)), sa, sa)
+  leaks sa
+]
+queries [
+  confidentiality? sa
+  confidentiality? outer
+]

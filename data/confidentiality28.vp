@@ -1,0 +1,20 @@
+attacker [passive]
+principal A [
+  knows password ctarget, ca
+  knows private sa
+  x = G^ctarget
+  outer = RINGSIGN(
+     x,
+     sa,
+     G^ca,
+     sa
+  )
+  leaks ca, outer, sa // all but ctarget
+]
+queries [
+  // TODO ought to be bruteforceable?
+  confidentiality? sa
+  confidentiality? x
+  confidentiality? ctarget
+  confidentiality? ca
+]

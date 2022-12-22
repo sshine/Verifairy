@@ -1,0 +1,12 @@
+attacker [passive]
+principal A [
+  knows private sa
+  x = SPLIT(CONCAT(sa,sa))
+  outer = G^x
+  leaks sa
+]
+queries [
+  confidentiality? sa
+  confidentiality? x
+  confidentiality? outer
+]

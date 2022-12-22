@@ -1,0 +1,16 @@
+attacker [passive]
+principal B [
+   knows private x
+   z = HASH(x)
+   leaks z
+   knows private a
+   b = HASH(a)
+   leaks a
+ ]
+queries [
+  confidentiality? x // yes
+
+  confidentiality? z // no, because it was leaked
+  confidentiality? a // no, because it was leaked
+  confidentiality? b // no, because it can be constructed using (a)
+]

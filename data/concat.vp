@@ -1,0 +1,7 @@
+attacker [ passive ]
+principal A [
+  knows private a
+  knows private b
+  c = CONCAT(a,b)
+]
+queries []

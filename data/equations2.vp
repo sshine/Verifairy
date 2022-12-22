@@ -1,0 +1,22 @@
+attacker[passive]
+principal Server[
+  generates x
+  generates y
+  gx = G^x
+  gy = G^y
+  gxy = gx^y
+  gyx = gy^x
+]
+queries [
+  equivalence? gx, gy   // TODO NOT EQUIVALENT
+  equivalence? gyx, gxy
+]
+// (G^x)   == Assignment (G
+//                          (EConstant (Constant {constantName = "x"})))
+// (G^x)^y == Assignment ((:^:)
+//                          (Constant {constantName = "gx"})
+//                          (EConstant (Constant {constantName = "y"})))
+// (G^x)^y == Assignment ((:^:)
+//                          (G
+//                            (EConstant (Constant {constantName = "x"})))
+//                          (EConstant (Constant {constantName = "y"})))

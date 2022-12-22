@@ -1,0 +1,11 @@
+attacker[passive]
+principal A[
+  generates a
+  b = HASH(a)
+  c = CONCAT(b,nil)
+]
+queries[
+  freshness? a
+  freshness? b
+  freshness? c
+]

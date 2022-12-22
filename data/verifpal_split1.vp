@@ -1,0 +1,15 @@
+// This seems like a bug in verifpal-go.
+// It fails to report that b_what is obtained.
+attacker[passive]
+principal B []
+principal A [
+  knows private what
+  msg = SPLIT(CONCAT(what,nil))
+]
+A -> B: msg
+principal B [ b_what = SPLIT(CONCAT(msg,nil)) ]
+queries [
+  equivalence? what, b_what // OK
+  confidentiality? b_what   // OK: attacker cannot compute this
+  confidentiality? what     // NOPE: using b_what, what is computed
+]

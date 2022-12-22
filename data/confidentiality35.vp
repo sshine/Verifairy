@@ -1,0 +1,8 @@
+attacker [passive]
+principal A [
+  knows public x
+  y = HASH(x)
+]
+queries [
+  confidentiality? x // no since x is public
+]

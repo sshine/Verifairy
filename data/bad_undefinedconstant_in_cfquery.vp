@@ -1,0 +1,7 @@
+attacker [ passive ]
+principal A [
+  knows private x
+]
+queries [
+  confidentiality? y
+]

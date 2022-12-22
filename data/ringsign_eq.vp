@@ -1,0 +1,23 @@
+attacker [passive]
+principal A [ knows private a knows public m ga = G^a ]
+principal B [ knows private b knows public m gb = G^b ]
+principal C [ knows private c knows public m gc = G^c ]
+principal D [ knows public m ]
+
+A -> B: [ga]                  C -> A: [gc]
+               B -> A: [gb]   C -> A: [gc]
+A -> C: [ga]   B -> C: [gb]              
+A -> D: [ga]   B -> D: [gb]   C -> D: [gc]
+
+principal A [ gas = RINGSIGN(a, gb, gc, m) ]
+principal B [ gbs = RINGSIGN(b, ga, gc, m) ]
+principal C [ gcs = RINGSIGN(c, ga, gb, m) ]
+A -> D: [gas]  B -> D: [gbs]  C -> D: [gcs]
+principal D [
+  da = RINGSIGNVERIF(ga, gb, gc, m, gas)
+  db = RINGSIGNVERIF(ga, gb, gc, m, gbs)
+  dc = RINGSIGNVERIF(ga, gb, gc, m, gcs)
+]
+queries [
+  equivalence? m, da, db, dc
+]

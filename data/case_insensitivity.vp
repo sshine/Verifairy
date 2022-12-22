@@ -1,0 +1,28 @@
+// This test aims to check that constant names are case-insensitive
+
+attacker [passive]
+
+principal A [
+  generates AbC
+  knows private PRIV
+  knows public  PUB
+  knows password PW
+  DeF = HASH(abc, ABC)
+  gHi = HASH(DEF, aBc)
+]
+principal B []
+
+A -> B: deF, GHi, abC
+
+principal B [
+  B_DEF = HASH(Abc, aBC)
+  b_gHi = HASH(dEf, Abc)
+]
+queries [
+  equivalence? ABC, abc
+  equivalence? priv, PRiV
+  equivalence? PUB, puB
+  equivalence? PW, pw
+  equivalence? def, b_def
+  equivalence? b_ghi, ghi
+]

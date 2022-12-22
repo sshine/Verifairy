@@ -1,0 +1,13 @@
+attacker [passive]
+principal A [
+  knows private sa, sb
+  outer = MAC(CONCAT(SPLIT(G^sa), SPLIT(G^sb)),sa)
+  outer2 = CONCAT(MAC(G^sa,G^sa), SPLIT(G^sa))
+  leaks sa, sb
+]
+queries [
+  confidentiality? sa
+  confidentiality? sb
+  confidentiality? outer // verifpal is happy with this one?
+  confidentiality? outer2
+]

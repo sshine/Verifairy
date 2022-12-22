@@ -1,0 +1,13 @@
+attacker [passive]
+principal A [
+  knows private key1, key2, msg1, msg2
+  enc1 = ENC(key1,CONCAT(msg1,msg2))
+  dec1 = DEC(key1, enc1)
+  dec2 = DEC(key2, enc1)
+  r1, r2 = SPLIT(dec1)
+  x1, x2 = SPLIT(dec2) // this is basically a problem?
+]
+queries [
+  equivalence? r1, msg1
+  equivalence? r2, msg2
+]

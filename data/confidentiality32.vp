@@ -1,0 +1,20 @@
+attacker [passive]
+principal A [
+  knows password c1_32, c2, c3
+  pwh2 = PW_HASH(c2)
+  outer = HASH(
+     G^c1_32,
+     pwh2,
+     G^c3
+  )
+  leaks outer, pwh2
+]
+queries [
+  // since we know pwh2 and outer, we can learn c1,c3 by bruteforce.
+  // this test is similar to confidentiality31.vp, but it leaks the
+  // hashed version which allow reconstruction of the other passwords.
+  confidentiality? c1_32   // no
+  confidentiality? pwh2 // no
+  confidentiality? c2   // yes
+  confidentiality? c3   // no
+]
