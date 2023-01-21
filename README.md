@@ -1,5 +1,7 @@
 # Verifairy
 
+![Verifairy](./verifairy.png)
+
 A Haskell implementation of VerifPal™.
 
 The manual: https://verifpal.com/res/pdf/manual.pdf
