@@ -960,6 +960,14 @@ equationToList acc c =
 simplifyExpr' :: Bool -> CanonExpr -> CanonExpr
 simplifyExpr' skipPrimitive e = do
   case e of
+    CPrimitive (PKE_DEC skey enc) _
+      | not skipPrimitive -> do
+          let s_skey = simplifyExpr skey
+              s_enc  = simplifyExpr enc
+          case s_enc of
+            CPrimitive (PKE_ENC pk plaintext) _
+              | equivalenceExpr (CG s_skey) pk -> plaintext
+            _ -> e
     CPrimitive (SHAMIR_JOIN
                 ( CItem idxa (CPrimitive (SHAMIR_SPLIT e_a) _))
                 ( CItem idxb (CPrimitive (SHAMIR_SPLIT e_b)_))
