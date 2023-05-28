@@ -364,6 +364,15 @@ spec_equivalence = do
       shouldNotFail modelState
       -- TODO should NOT have: modelState `shouldHaveEquivalence` ["a", "b"]
       modelState `shouldHaveEquivalence` ["gyx", "gxy"]
+    let msEquivalence6 = process equivalence6_ast
+    it "checks equivalence6 model" $ do
+      shouldNotFail msEquivalence6
+    it "checks equivalence6 query: : m = PKE_DEC(sk, PKE_ENC(pk, m))" $ do
+      msEquivalence6 `shouldHaveEquivalence` ["decrypted", "message"]
+    it "checks equivalence6: confidentiality? message" $ do
+      msEquivalence6 `shouldHaveConfidentiality` "message"
+    it "checks equivalence6: confidentiality? key_a" $ do
+      msEquivalence6 `shouldHaveConfidentiality` "key_a"
 
 spec_confidentiality :: Spec
 spec_confidentiality = do

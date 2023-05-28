@@ -387,6 +387,11 @@ equivalence5 = $(embedStringFile "data/equivalence5.vp")
 equivalence5_ast :: Model
 equivalence5_ast = assertParseModel equivalence5
 
+equivalence6 :: Text
+equivalence6 = $(embedStringFile "data/equivalence6.vp")
+equivalence6_ast :: Model
+equivalence6_ast = assertParseModel equivalence6
+
 abknows :: Text
 abknows = $(embedStringFile "data/abknows.vp")
 

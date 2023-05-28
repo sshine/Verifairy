@@ -1,0 +1,24 @@
+attacker[passive]
+principal A[
+   generates key_a
+   pk_a = G^key_a
+]
+
+A -> B: pk_a
+
+principal B[
+    generates message
+    ciphertext = PKE_ENC(pk_a, message)
+]
+
+B -> A: ciphertext
+
+principal A[
+   decrypted = PKE_DEC(key_a, ciphertext)
+]
+
+queries[
+    equivalence? decrypted, message
+    confidentiality? message
+    confidentiality? key_a
+]
