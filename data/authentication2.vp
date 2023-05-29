@@ -1,0 +1,14 @@
+// from verifpal paper, section 2.3
+attacker[passive]
+
+principal Alice[]
+
+principal Bob[
+    generates e1
+]
+
+Bob->Alice: e1
+
+queries [
+    authentication? Bob->Alice: e1
+]

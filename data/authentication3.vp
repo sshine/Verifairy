@@ -1,0 +1,14 @@
+attacker[passive]
+
+principal Alice[]
+
+principal Bob[
+    generates e1
+]
+
+Bob->Alice: e1
+
+// empty queryOptions without any queryOption:
+queries [
+    authentication? Bob->Alice: e1 []
+]

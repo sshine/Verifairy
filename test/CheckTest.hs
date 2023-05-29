@@ -21,6 +21,7 @@ import qualified Hedgehog.Range
 import Test.Tasty.Hspec
 
 import VerifPal.Types
+import VerifPal.Parser (parseModel)
 import VerifPal.Check (process, ModelState(..), ModelError(..), ProcessingCounter, CanonExpr(..),CanonKnowledge(..), equationToList, equivalenceExpr, simplifyExpr, decanonicalizeExpr, mapPrimitiveP, emptyModelState)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -83,6 +84,12 @@ shouldHave modelState (principalName, constants) =
     Nothing -> fail "Principal not found" -- True `shouldBe` False
     Just principalMap ->
       forM_ constants (\constant -> Map.member constant principalMap `shouldBe` True)
+
+shouldParse :: Text -> Expectation
+shouldParse modelSrc =
+  case parseModel modelSrc of
+    Left bundle -> fail (show bundle) -- better than nothing, not very pretty. TODO.
+    Right _ -> pure ()
 
 shouldHaveEquivalence :: ModelState -> [Text] -> Expectation
 shouldHaveEquivalence modelState wantedConstants =
@@ -364,6 +371,18 @@ spec_equivalence = do
       shouldNotFail modelState
       -- TODO should NOT have: modelState `shouldHaveEquivalence` ["a", "b"]
       modelState `shouldHaveEquivalence` ["gyx", "gxy"]
+
+spec_authentication :: Spec
+spec_authentication = do
+  describe "parse" $ do
+    it "parses authentication1" $ do
+      shouldParse authentication1
+    it "parses authentication2" $ do
+      shouldParse authentication2
+    it "parses authentication3" $ do
+      shouldParse authentication3
+    it "parses authentication4" $ do
+      shouldParse authentication4
 
 spec_confidentiality :: Spec
 spec_confidentiality = do

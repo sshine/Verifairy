@@ -11,7 +11,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import qualified Data.Text.Lazy as Text.Lazy
-import Error.Diagnose (addFile, printDiagnostic)
+import Error.Diagnose (addFile, printDiagnostic, Note, defaultStyle)
 import Error.Diagnose.Compat.Megaparsec (errorDiagnosticFromBundle)
 import Options.Applicative
 import Prettyprinter.Render.Terminal (putDoc)
@@ -51,11 +51,11 @@ argsHandler Args {..} = do
     Left bundle ->
       let short = Nothing :: Maybe Text
           explanation = "Parse error on input"
-          extra_hints = Nothing :: Maybe [Text] -- in addition to the HasHints lookup?
+          extra_hints = Nothing :: Maybe [Error.Diagnose.Note Text] -- in addition to the HasHints lookup?
           diag = errorDiagnosticFromBundle short explanation extra_hints bundle
           fake_filename = "" -- TODO Parser.hs feeds in "" as the filename to "parse"
           diag' = addFile diag fake_filename (Text.unpack srcText)
-       in printDiagnostic stderr True True 4 diag'
+       in printDiagnostic stderr True True 4 defaultStyle diag'
 
     Right model -> do
       Text.hPutStrLn stderr ("Processing file " <> Text.pack srcFile)
