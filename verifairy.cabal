@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.35.0.
+-- This file has been generated from package.yaml by hpack version 0.35.2.
 --
 -- see: https://github.com/sol/hpack
 
@@ -28,7 +28,7 @@ library
   build-depends:
       base
     , containers
-    , diagnose ==1.8.1
+    , diagnose ==2.4.0
     , fgl
     , githash
     , megaparsec
@@ -52,7 +52,7 @@ executable verifairy
   build-depends:
       base
     , containers
-    , diagnose ==1.8.1
+    , diagnose ==2.4.0
     , fgl
     , filepath
     , githash
@@ -85,7 +85,7 @@ test-suite test
   build-depends:
       base
     , containers
-    , diagnose ==1.8.1
+    , diagnose ==2.4.0
     , fgl
     , file-embed
     , githash

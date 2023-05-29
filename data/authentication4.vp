@@ -1,0 +1,19 @@
+attacker[passive]
+
+principal Alice[]
+
+principal Bob[
+    generates e1, e2, e3
+]
+
+Bob->Alice: e1
+
+
+// multiple queryOption
+// the e3 queryOption has a guardedConstant
+queries [
+    authentication? Bob->Alice: e1 [
+      precondition[ Bob->Alice: e2 ]
+      precondition[ Bob->Alice: e3 [e3] ]
+    ]
+]

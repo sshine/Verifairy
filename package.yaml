@@ -14,7 +14,7 @@ dependencies:
   - githash
   - prettyprinter
   - prettyprinter-ansi-terminal
-  - diagnose == 1.8.1
+  - diagnose == 2.4.0
   - pretty-show
 
 default-extensions:

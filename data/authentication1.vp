@@ -1,0 +1,16 @@
+// example from the verifpal paper, section 2.4
+attacker[passive]
+
+principal Carol[]
+principal Alice[
+  generates m2
+]
+Alice->Carol: m2
+principal Bob[
+  generates e
+]
+Bob->Alice: e
+
+
+queries[authentication? Bob->Alice: e[
+  precondition[Alice->Carol: m2]]]
